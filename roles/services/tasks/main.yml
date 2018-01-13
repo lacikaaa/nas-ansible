@@ -1,0 +1,6 @@
+- name: Conditionally decide to load in variables for vagrant
+  include_vars:
+    file: vagrant.yml
+  when: vagrant
+
+- import_tasks: mount-script.yml

@@ -1,0 +1,18 @@
+#/bin/bash
+
+echo -n Password: 
+read -s password
+echo
+
+{% for item in disks_to_encrypt %}
+echo "Open encrypted disk: {{ item }}"
+[[ -e /dev/mapper/{{ item  | regex_replace('/dev/') }} ]] || echo $password | cryptsetup open {{ item }} {{ item  | regex_replace('/dev/') }}
+{% endfor %}
+
+echo "Mount /data"
+btrfs filesystem show /data ; [[ $? == 0 ]] || { mkdir -p /data; mount /dev/mapper/{{ disks_to_encrypt.0 | regex_replace('/dev/') }} /data; }
+
+for vol in `btrfs subvolume list /data | cut -f9 -d" "`; do
+    echo "Mount subvolume $vol"
+    mount | grep -wq "subvol=/$vol)" ; [[ $? == 0 ]] || mount -t btrfs -o subvol=$vol /dev/mapper/{{ disks_to_encrypt.0 | regex_replace('/dev/') }} /data/$vol
+done

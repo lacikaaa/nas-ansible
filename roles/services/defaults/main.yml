@@ -1,0 +1,6 @@
+vagrant: false
+disks_to_encrypt: 
+  - /dev/sda3
+  - /dev/sdb3
+  - /dev/sdc3
+

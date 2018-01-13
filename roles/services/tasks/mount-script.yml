@@ -1,0 +1,7 @@
+- name: "copy mount data drives script"
+  template:
+    src: mount-data-drives.j2
+    dest: /usr/bin/mount-data-drives
+    owner: root
+    group: root
+    mode: 0744
