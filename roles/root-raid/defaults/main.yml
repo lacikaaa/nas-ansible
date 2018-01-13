@@ -1,0 +1,2 @@
+vagrant: false
+disks_to_root_raid: /dev/sdb2 /dev/sdc2

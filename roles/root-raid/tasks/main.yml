@@ -1,0 +1,8 @@
+- name: Conditionally decide to load in variables for vagrant
+  include_vars:
+    file: vagrant.yml
+  when: vagrant
+
+- name: "add partitions to / with RAID1"
+  script: add_btrfs_devices_to_raid.sh -f / -i "{{ disks_to_root_raid }}"
+  when: disks_to_root_raid is defined

@@ -1,0 +1,57 @@
+- name: Conditionally decide to load in variables for vagrant
+  include_vars:
+    file: vagrant.yml
+  when: vagrant
+
+- name: "check if keyfile present"
+  local_action: stat path={{ role_path }}/files/keyfile
+  register: keyfile_present
+  become: false
+
+- name: "generate keyfile if not present"
+  local_action: command dd bs=512 count=4 if=/dev/urandom of={{ role_path }}/files/keyfile
+  become: false
+  when: not keyfile_present.stat.exists
+
+- copy: 
+    src: /{{ role_path }}/files/keyfile
+    dest: /tmp/keyfile
+    owner: root
+    group: root
+    mode: 0660
+
+- copy: 
+    src: /{{ role_path }}/files/password
+    dest: /tmp/password
+    owner: root
+    group: root
+    mode: 0660
+
+- name: install the latest version of cryptsetup
+  package:
+    name: cryptsetup
+    state: latest
+
+- name: "encrypt disks"
+  shell: cryptsetup isLuks {{ item }} ; [[ $? != 0 ]] && cryptsetup luksFormat --type luks2 --cipher aes-xts-plain64 --key-size 256 --hash sha256 {{ item }} /tmp/keyfile || exit 0
+  with_items: "{{disks_to_encrypt}}"
+
+- name: "add password to disks"
+  shell: cryptsetup luksDump {{ item }} | grep 'Slot 1' | grep -wq "ENABLED" ; [[ $? != 0 ]] && cryptsetup luksAddKey {{ item }} /tmp/password  -S 1 -d /tmp/keyfile || exit 0
+  with_items: "{{disks_to_encrypt}}"
+
+- name: "header backup"
+  shell: rm -f /tmp/{{ item  | regex_replace('/dev/') }}.img ; cryptsetup luksHeaderBackup {{ item }} --header-backup-file /tmp/{{ item  | regex_replace('/dev/') }}.img
+  with_items: "{{disks_to_encrypt}}"
+
+# Copy back crypted drive headers for backup
+- find: paths="/tmp/" recurse=no patterns="*.img"
+  register: files_to_copy
+- fetch: src={{ item }} dest=.
+  flat: yes
+  with_items: "{{ files_to_copy.files | map(attribute='path') | list }}"
+
+- name: "open encrypted disks"
+  shell: "[[ -f /dev/mapper/{{ item  | regex_replace('/dev/') }} ]] || cryptsetup open {{ item }} {{ item  | regex_replace('/dev/') }} -d /tmp/keyfile"
+  with_items: "{{disks_to_encrypt}}"
+
