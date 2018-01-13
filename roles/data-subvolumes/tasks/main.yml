@@ -1,0 +1,13 @@
+- name: "create btrfs subvolumes"
+  shell: btrfs subvolume list /data | grep -wq {{ item }} ; [[ $? == 0 ]] || btrfs subvolume create /data/{{ item }}
+  when: subvols is defined
+  with_items: "{{ subvols }}"
+
+- name: "get data volume device"
+  shell: mount | grep /data | grep subvol=/\) | cut -f1 -d" "
+  register: data_device
+
+- name: "mount btrfs subvolumes"
+  shell: mount | grep -wq "subvol=/{{ item }})" ; [[ $? == 0 ]] || mount -t btrfs -o subvol={{ item }} {{ data_device.stdout }} /data/{{ item }}
+  when: subvols is defined
+  with_items: "{{ subvols }}"
