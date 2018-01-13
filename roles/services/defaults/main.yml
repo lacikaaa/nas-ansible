@@ -4,3 +4,47 @@ disks_to_encrypt:
   - /dev/sdb3
   - /dev/sdc3
 
+shares:
+  - { 
+    "name" : "movies",
+    "path" : "/data/movies",
+    "comment" : "Movies",
+    "browsable" : "yes",
+    "guest_ok" : "yes",
+    "read_only" : "yes",
+    "write_list" : "@user"
+    }
+  - { 
+    "name" : "music",
+    "path" : "/data/music",
+    "comment" : "Music"
+    }
+  - { 
+    "name" : "ebooks",
+    "path" : "/data/ebooks",
+    "comment" : "Ebooks"
+    }
+  - { 
+    "name" : "photos",
+    "path" : "/data/photos",
+    "comment" : "Photos",
+    "browsable" : "yes",
+    "guest_ok" : "no",
+    "read_only" : "yes",
+    "write_list" : "@user"
+    }
+  - { 
+    "name" : "softwares",
+    "path" : "/data/softwares",
+    "comment" : "Softwares"
+    }
+  - { 
+    "name" : "backup",
+    "path" : "/data/backup",
+    "comment" : "Backup",
+    "browsable" : "yes",
+    "guest_ok" : "no",
+    "read_only" : "yes",
+    "write_list" : "@user"
+    }
+  

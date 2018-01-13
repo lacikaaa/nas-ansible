@@ -1,0 +1,33 @@
+# This script is managed by Ansible
+
+[global]
+        workgroup = NAS
+        passdb backend = tdbsam
+        map to guest = Bad User
+        comment = NAS Share
+        browsable = yes
+        guest ok = yes
+        read only = yes
+        write list = @user
+
+{% for item in shares %}
+[{{ item.name }}]
+{% if item.path is defined %}
+        path = {{ item.path }}
+{% endif %}
+{% if item.comment is defined %}
+        comment = {{ item.comment }}
+{% endif %}
+{% if item.browsable is defined %}
+        browsable = {{ item.browsable }}
+{% endif %}
+{% if item.guest_ok is defined %}
+        guest ok = {{ item.guest_ok }}
+{% endif %}
+{% if item.read_only is defined %}
+        read only = {{ item.read_only }}
+{% endif %}
+{% if item.write_list is defined %}
+        write list = {{ item.write_list }}
+{% endif %}
+{% endfor %}

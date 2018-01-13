@@ -1,0 +1,7 @@
+- name: "copy samba config"
+  template:
+    src: smb.conf.j2
+    dest: /etc/samba/smb.conf
+    owner: root
+    group: root
+    mode: 0644
