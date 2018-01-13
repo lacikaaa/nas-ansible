@@ -3,3 +3,5 @@
   roles:
     - root-raid
     - data-encrypt
+    - data-raid
+    

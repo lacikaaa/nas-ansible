@@ -26,7 +26,7 @@ done
 [[ -z "$FILESYSTEM" ]] && { echo "Error: filesystem with -f is not set"  >&2; exit 1; }
 [[ -z "$INPUT_DEVICES" ]] && { echo "Error: input devices with -i is not set"  >&2; exit 1; }
 
-ADDED_DEVICES=$(btrfs filesystem show $FILESYSTEM | grep -Eo "/dev/[A-z]{3}[0-9]*")
+ADDED_DEVICES=$(btrfs filesystem show $FILESYSTEM | grep -Eo "/dev/.+")
 [[ "$?" != 0 ]] && { echo "Getting devices returned error for $FILESYSTEM" >&2; exit 1; }
 
 NEW_DEVICE="false"

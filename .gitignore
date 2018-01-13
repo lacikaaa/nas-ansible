@@ -32,6 +32,7 @@ Temporary Items
 ### Vagrant ###
 .vagrant/
 *.box
+*.vdi
 
 ### Project specific ###
 keyfile

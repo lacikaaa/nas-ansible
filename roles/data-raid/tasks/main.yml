@@ -1,0 +1,19 @@
+- name: Conditionally decide to load in variables for vagrant
+  include_vars:
+    file: vagrant.yml
+  when: vagrant
+
+- name: "initialize disk0 if not btrfs"
+  shell: fsck -N {{ disks_to_data.0 }} | grep -wq btrfs ; [[ $? == 0 ]] || mkfs.btrfs {{ disks_to_data.0 }}
+  when: disks_to_data is defined
+
+- name: "mount /data if not yet"
+  shell: btrfs filesystem show /data ; [[ $? == 0 ]] || { mkdir -p /data; mount {{ disks_to_data.0 }} /data; }
+  when: disks_to_data is defined
+
+- name: "add partitions to /data with RAID1"
+  script: add_btrfs_devices_to_raid.sh -f /data -i {{ item }}
+  when: disks_to_data is defined
+  with_items: "{{ disks_to_data }}"
+
+

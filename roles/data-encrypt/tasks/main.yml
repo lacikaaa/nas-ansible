@@ -52,6 +52,6 @@
   with_items: "{{ files_to_copy.files | map(attribute='path') | list }}"
 
 - name: "open encrypted disks"
-  shell: "[[ -f /dev/mapper/{{ item  | regex_replace('/dev/') }} ]] || cryptsetup open {{ item }} {{ item  | regex_replace('/dev/') }} -d /tmp/keyfile"
+  shell: "[[ -e /dev/mapper/{{ item  | regex_replace('/dev/') }} ]] || cryptsetup open {{ item }} {{ item  | regex_replace('/dev/') }} -d /tmp/keyfile"
   with_items: "{{disks_to_encrypt}}"
 
