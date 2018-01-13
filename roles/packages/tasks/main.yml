@@ -1,0 +1,27 @@
+- name: Conditionally decide to load in variables for vagrant
+  include_vars:
+    file: vagrant.yml
+  when: vagrant
+  
+- name: "update system"
+  zypper:
+    name: '*'
+    state: latest
+
+- name: "install packages"
+  zypper:
+    name: "{{ item }}"
+    state: latest
+  with_items: "{{ packages }}"
+
+- name: "reboot"
+  shell: sleep 2 && shutdown -r now
+  async: 1
+  poll: 0
+  ignore_errors: true
+  when: restart_enabled
+
+- name: "Waiting for host to come back"
+  local_action: wait_for host={{ ansible_ssh_host }} state=started delay={{ delay_after_restart }} port={{ ansible_port }}
+  become: false
+  when: restart_enabled

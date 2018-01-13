@@ -1,7 +1,9 @@
 ---
 - hosts: all
   roles:
+    - packages
     - root-raid
     - data-encrypt
     - data-raid
     - data-subvolumes
+    

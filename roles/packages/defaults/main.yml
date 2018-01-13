@@ -1,0 +1,14 @@
+packages:
+  - man
+  - docker
+  - docker-compose
+  - docker-bash-completion
+  - mc
+  - nano
+  - openvpn
+  - openvpn-auth-pam-plugin
+  - samba
+  - transmission-daemon
+
+restart_enabled: true
+delay_after_restart: 180
