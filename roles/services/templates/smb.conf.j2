@@ -9,6 +9,11 @@
         guest ok = yes
         read only = yes
         write list = @user
+        force group = {{ samba_group }}
+        force create mode = 0660
+        create mask = 0660
+        force directory mode = 0770
+        directory mask = 0770
 
 {% for item in shares %}
 [{{ item.name }}]

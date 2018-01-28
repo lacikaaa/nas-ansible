@@ -6,3 +6,4 @@
 - import_tasks: mount-script.yml
 - import_tasks: docker.yml
 - import_tasks: samba.yml
+- import_tasks: transmission.yml

@@ -12,9 +12,12 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     config.vbguest.iso_path = File.expand_path("/Applications/VirtualBox.app/Contents/MacOS/VBoxGuestAdditions.iso", __FILE__)
     config.vbguest.no_remote = true
 
+    config.vm.network "public_network",
+        use_dhcp_assigned_default_route: true
+
     config.vm.provider "virtualbox" do |vb|
         vb.memory = 2048
-        vb.cpus = 2
+        vb.cpus = 4
 
         root2 = File.realpath( "." ).to_s + "/diskroot2.vdi"
         data1 = File.realpath( "." ).to_s + "/diskdata1.vdi"

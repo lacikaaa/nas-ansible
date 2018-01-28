@@ -1,3 +1,7 @@
+- name: "Load samba users"
+  include_vars:
+    file: samba_users.yml
+
 - name: "copy samba config"
   template:
     src: smb.conf.j2
@@ -5,3 +9,53 @@
     owner: root
     group: root
     mode: 0644
+
+- name: "create samba group {{ samba_group }}"
+  group:
+    name: "{{ samba_group }}"
+    state: present
+
+- name: "set /data ownership"
+  file: 
+    path: /data
+    group: "{{ samba_group }}"
+    recurse: yes
+
+- name: "set /data directory permissions to 770"
+  command: find /data -type d -exec chmod 0770 {} \;
+
+- name: "set /data directory setgid on"
+  command: find /data -type d -exec chmod g+s {} \;
+
+- name: "set /data directory umask 007"
+  command: find /data -type d -exec umask 007 {} \;
+
+- name: "set /data files permissions to 660"
+  command: find /data -type f -exec chmod 0660 {} \;
+
+- name: "create ACL: force samba group"
+  acl:
+    path: /data
+    default: yes
+    recursive: yes
+    state: present
+    etype: group
+    permissions: rwx
+
+- name: "create samba users"
+  user:
+    name: "{{ item.username }}"
+    password: "{{ item.password | password_hash('sha512') }}"
+    update_password: on_create
+    groups: "{{ samba_group }}"
+    append: yes
+  with_items: "{{ samba_users }}"
+
+- name: "set samba passwords"
+  shell: (echo {{ item.password }} ; echo {{ item.password }} ) | smbpasswd -a -s {{ item.username }}
+  with_items: "{{ samba_users }}"
+
+- name: "start samba service"
+  systemd: 
+    name: smb
+    state: started

@@ -4,6 +4,8 @@ disks_to_encrypt:
   - /dev/sdb3
   - /dev/sdc3
 
+samba_group: smbusers
+
 shares:
   - { 
     "name" : "movies",
@@ -48,3 +50,22 @@ shares:
     "write_list" : "@user"
     }
   
+transmission: {
+  "speed_limit_up": 600,
+  "speed_limit_up_enabled": true,
+  "rpc_authentication_required": true,
+  "rpc_bind_address": "0.0.0.0",
+  "rpc_enabled": true,
+  "rpc_password": "transmissionPassword",
+  "rpc_port": 9091,
+  "rpc_url": "/transmission/",
+  "rpc_username": "transmissionUser",
+  "rpc_whitelist": "127.0.0.1,192.168.*.*",
+  "rpc_whitelist_enabled": true,
+  "download_dir": "/data/movies",
+  "cache_size_mb": 8,
+  "trash_original_torrent_files": true,
+  "watch_dir": "/data/movies/todownload",
+  "watch_dir_enabled": true,
+  "umask": 7
+}

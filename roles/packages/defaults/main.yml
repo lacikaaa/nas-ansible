@@ -9,6 +9,8 @@ packages:
   - openvpn-auth-pam-plugin
   - samba
   - transmission-daemon
+  - transmission-common
+  - acl
 
 restart_enabled: true
 delay_after_restart: 180

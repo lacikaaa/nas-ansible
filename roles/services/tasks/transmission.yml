@@ -1,0 +1,48 @@
+- name: "set rmem_max for transmission"
+  sysctl:
+    name: net.core.rmem_max
+    value: 4194304
+    sysctl_set: yes
+    state: present
+    reload: yes
+
+- name: "set wmem_max for transmission"
+  sysctl:
+    name: net.core.wmem_max
+    value: 1048576
+    sysctl_set: yes
+    state: present
+    reload: yes
+
+- name: "add transmission to samba group"
+  user:
+    name: transmission
+    groups: "{{ samba_group }}"
+    append: yes
+
+- name: "create transmission watch directory"
+  file:
+    path: "{{ transmission.watch_dir }}"
+    state: directory
+    mode: 0770
+
+- name: "create transmission config directory"
+  file:
+    path: /var/lib/transmission/.config/transmission
+    state: directory
+    owner: transmission
+    group: transmission
+    mode: 0775
+
+- name: "copy transmission config"
+  template:
+    src: transmission_settings.json.j2
+    dest: /var/lib/transmission/.config/transmission/settings.json
+    owner: transmission
+    group: transmission
+    mode: 0664
+
+- name: "Start transmission-daemon service"
+  systemd: 
+    name: transmission-daemon
+    state: started

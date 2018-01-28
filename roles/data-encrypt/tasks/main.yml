@@ -13,14 +13,16 @@
   become: false
   when: not keyfile_present.stat.exists
 
-- copy: 
+- name: "copy keyfile to host"
+  copy: 
     src: /{{ role_path }}/files/keyfile
     dest: /tmp/keyfile
     owner: root
     group: root
     mode: 0660
 
-- copy: 
+- name: "copy password file to host"
+  copy: 
     src: /{{ role_path }}/files/password
     dest: /tmp/password
     owner: root
