@@ -7,7 +7,8 @@
         comment = NAS Share
         browsable = yes
         guest ok = yes
-        read only = yes
+        read only = no
+        read list = guest nobody
         write list = @user
         force group = {{ samba_group }}
         force create mode = 0660

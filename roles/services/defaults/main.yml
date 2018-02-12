@@ -13,7 +13,6 @@ shares:
     "comment" : "Movies",
     "browsable" : "yes",
     "guest_ok" : "yes",
-    "read_only" : "yes",
     "write_list" : "@user"
     }
   - { 
@@ -32,7 +31,6 @@ shares:
     "comment" : "Photos",
     "browsable" : "yes",
     "guest_ok" : "no",
-    "read_only" : "yes",
     "write_list" : "@user"
     }
   - { 
@@ -46,7 +44,6 @@ shares:
     "comment" : "Backup",
     "browsable" : "yes",
     "guest_ok" : "no",
-    "read_only" : "yes",
     "write_list" : "@user"
     }
   

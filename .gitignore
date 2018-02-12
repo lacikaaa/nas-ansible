@@ -38,6 +38,6 @@ Temporary Items
 keyfile
 password
 *.img
-samba_users.yaml
+samba_users.yml
 transmission_pw.yml
 

@@ -1,0 +1,9 @@
+- name: "remove keyfile"
+  file:
+    path: /tmp/keyfile
+    state: absent
+
+- name: "remove password file"
+  file:
+    path: /tmp/password
+    state: absent
