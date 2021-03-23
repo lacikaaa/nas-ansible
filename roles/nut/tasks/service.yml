@@ -1,0 +1,11 @@
+- name: "Start and enable nut server service"
+  systemd: 
+    name: nut-server
+    state: started
+    enabled: yes
+
+- name: "Start and enable nut monitor service"
+  systemd: 
+    name: nut-monitor
+    state: started
+    enabled: yes

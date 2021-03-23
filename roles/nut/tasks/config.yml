@@ -1,0 +1,43 @@
+- name: "Load nut users password"
+  include_vars:
+    file: passwords.yml
+
+- name: "copy nut.conf to host"
+  copy: 
+    src: /{{ role_path }}/files/nut.conf
+    dest: /etc/ups/nut.conf
+    owner: root
+    group: root
+    mode: 0644
+
+- name: "copy ups.conf to host"
+  copy: 
+    src: /{{ role_path }}/files/ups.conf
+    dest: /etc/ups/ups.conf
+    owner: root
+    group: root
+    mode: 0644
+
+- name: "copy upsd.conf to host"
+  copy: 
+    src: /{{ role_path }}/files/upsd.conf
+    dest: /etc/ups/upsd.conf
+    owner: upsd
+    group: root
+    mode: 0600
+
+- name: "copy upsd.users to host"
+  template: 
+    src: /{{ role_path }}/files/upsd.users
+    dest: /etc/ups/upsd.users
+    owner: upsd
+    group: root
+    mode: 0600
+
+- name: "copy upsmon.conf to host"
+  copy: 
+    src: /{{ role_path }}/files/upsmon.conf
+    dest: /etc/ups/upsmon.conf
+    owner: upsd
+    group: root
+    mode: 0600

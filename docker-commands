@@ -1,0 +1,52 @@
+docker run --detach \
+    --volume /data/backup/timemachine:/media/timemachine \
+    --publish 548:548 \
+    --env AFP_USER=rusty \
+    --env AFP_PASSWORD=TimeMachinePassword% \
+    --env AFP_UID=$(id -u) \
+    --env AFP_GID=$(id -g) \
+    --name netatalk \
+    cptactionhank/netatalk:latest
+
+
+docker run -d --net=host --name ums \
+  --user=500:1000 \
+  -v /data/ums/UMS.conf:/opt/ums/UMS.conf \
+  -v /data/ums/UMS.cred:/opt/ums/UMS.cred \
+  -v /data/ums/data:/opt/ums/data \
+  -v /data/ums/database:/opt/ums/database \
+  -v /data/movies:/media \
+  mbentley/ums
+
+docker run -d \
+  --name=couchpotato \
+  -v /data/couchpotato:/config \
+  -v /data/movies/todownload:/downloads \
+  -v /data/movies:/movies \
+  -e PGID=1000 -e PUID=501 \
+  -e TZ=Europe/Budapest \
+  -p 5050:5050 \
+  linuxserver/couchpotato
+
+docker run -d \
+  --name=jackett \
+  -v /data/jackett:/config \
+  -v /data/movies/todownload:/downloads \
+  -e PGID=1000 -e PUID=502 \
+  -e TZ=Europe/Budapest \
+  -v /etc/localtime:/etc/localtime:ro \
+  -p 9117:9117 \
+  linuxserver/jackett
+
+docker run -d \
+  --name=sonarr \
+  -v /etc/localtime:/etc/localtime:ro \
+  -v /data/sonarr:/config \
+  -v /data/movies/_series:/tv \
+  -v /data/movies:/downloads \
+  -p 8989:8989 \
+  -e PUID=503 -e PGID=1000 \
+  -e TZ=Europe/Budapest \
+  linuxserver/sonarr
+
+  docker run -v $OVPN_DATA:/etc/openvpn -d --restart always --name=openvpn -p 1194:1194/udp --cap-add=NET_ADMIN kylemanna/openvpn

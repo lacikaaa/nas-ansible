@@ -34,6 +34,9 @@ Temporary Items
 *.box
 *.vdi
 
+### IDE ###
+.idea
+
 ### Project specific ###
 keyfile
 password

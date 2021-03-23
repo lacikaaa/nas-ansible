@@ -1,0 +1,8 @@
+[upsmon]
+        password = {{ upsmon_pw }}
+        upsmon master
+
+[admin]
+        password = {{ admin_pw }}
+        actions = SET
+        instcmds = ALL
