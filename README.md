@@ -1,6 +1,12 @@
 # nas-ansible
 NAS ansible configuration
 
+# Testing
+
+Check `Vagrantfile`
+To activate vagrant specific settings issue: `export ANSIBLE_ARGS='--extra-vars "vagrant=true"'`
+Guest addiotion ISO hardcoded for Ubuntu
+
 # UPS configuration with Network UPS Tools
 Configuring FSP EP1000 with nut
 
