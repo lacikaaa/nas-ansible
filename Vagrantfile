@@ -9,6 +9,7 @@ VAGRANTFILE_API_VERSION = "2"
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     config.vm.box = "opensuse/Leap-15.6.x86_64"
     
+    config.vbguest.installer_hooks[:before_install] = ["zypper --non-interactive in bzip2", "sleep 1"]
     config.vbguest.iso_path = File.expand_path("/usr/share/virtualbox/VBoxGuestAdditions.iso", __FILE__)
     config.vbguest.no_remote = true
 
@@ -34,6 +35,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
     config.ssh.insert_key = false
 
+    config.vm.provision "shell", inline: "zypper --non-interactive in python312"
     config.vm.provision "ansible" do |ansible|
         ansible.verbose = "v"
         ansible.playbook = "nas.yml"

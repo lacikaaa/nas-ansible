@@ -7,6 +7,15 @@ Check `Vagrantfile`
 To activate vagrant specific settings issue: `export ANSIBLE_ARGS='--extra-vars "vagrant=true"'`
 Guest addiotion ISO hardcoded for Ubuntu
 
+## Prereq
+`vagrant plugin install vagrant-vbguest`
+
+## Run
+`vagrant up`
+
+## Debug
+`vagrant ssh` + logs
+
 # UPS configuration with Network UPS Tools
 Configuring FSP EP1000 with nut
 

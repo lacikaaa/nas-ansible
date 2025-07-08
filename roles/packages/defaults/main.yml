@@ -11,6 +11,8 @@ packages:
   - transmission-daemon
   - transmission-common
   - acl
+  - btrfsprogs
+  - btrfsmaintenance
 
 restart_enabled: true
 delay_after_restart: 180

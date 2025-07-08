@@ -49,8 +49,10 @@
 # Copy back crypted drive headers for backup
 - find: paths="/tmp/" recurse=no patterns="*.img"
   register: files_to_copy
-- fetch: src={{ item }} dest=.
-  flat: yes
+- fetch: 
+    src: "{{ item }}" 
+    dest: .
+    flat: yes
   with_items: "{{ files_to_copy.files | map(attribute='path') | list }}"
 
 - name: "open encrypted disks"
