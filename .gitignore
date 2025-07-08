@@ -1,6 +1,7 @@
 
 ### Ansible ###
 *.retry
+.venv
 
 ### OSX ###
 *.DS_Store
