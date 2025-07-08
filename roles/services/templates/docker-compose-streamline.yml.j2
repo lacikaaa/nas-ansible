@@ -1,0 +1,65 @@
+version: '3'
+services:
+  jackett:
+    image: linuxserver/jackett
+    container_name: jackett
+    restart: unless-stopped
+    volumes:
+      - /data/jackett:/config
+      - {{ transmission.watch_dir }}:/downloads
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "9117:9117"
+    environment:
+      - PUID=502
+      - PGID=1000
+      - TZ=Europe/Budapest
+    networks:
+      - streamline_net
+
+  radarr:
+    build:
+      context: .
+      dockerfile: Dockerfile-radarr
+    container_name: radarr
+    environment:
+      - PUID=504
+      - PGID=1000
+      - TZ=Europe/Budapest
+    volumes:
+      - /data/radarr/:/config
+      - /data/movies/_filmz:/movies
+      - /data/movies:/downloads
+    ports:
+      - 7878:7878
+    restart: unless-stopped
+    networks:
+      - streamline_net
+
+  sonarr:
+    build:
+      context: .
+      dockerfile: Dockerfile-sonarr
+    container_name: sonarr
+    restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /data/sonarr:/config
+      - /data/movies/_series:/tv
+      - /data/movies:/downloads
+    ports:
+      - "8989:8989"
+    environment:
+      - PUID=503
+      - PGID=1000
+      - TZ=Europe/Budapest
+    networks:
+      - streamline_net
+
+networks:
+  streamline_net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.21.0.0/16"

@@ -1,0 +1,25 @@
+- name: Ensure streamline directory exists
+  file:
+    path: /data/streamline
+    state: directory
+
+- name: "copy Dockerfile-radarr to host"
+  copy: 
+    src: /{{ role_path }}/files/Dockerfile-radarr
+    dest: /data/streamline/Dockerfile-radarr
+
+- name: "copy Dockerfile-sonarr to host"
+  copy: 
+    src: /{{ role_path }}/files/Dockerfile-sonarr
+    dest: /data/streamline/Dockerfile-sonarr
+
+- name: "copy streamline compose file"
+  template:
+    src: docker-compose-streamline.yml.j2
+    dest: /data/streamline/docker-compose.yml
+
+- name: "start streamline with force build"
+  community.docker.docker_compose_v2:
+    project_src: /data/streamline
+    build: "always"
+    pull: "always"

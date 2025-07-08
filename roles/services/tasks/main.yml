@@ -7,3 +7,4 @@
 - import_tasks: docker.yml
 - import_tasks: samba.yml
 - import_tasks: transmission.yml
+- import_tasks: streamline.yml

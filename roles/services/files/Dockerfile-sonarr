@@ -1,0 +1,7 @@
+FROM lscr.io/linuxserver/sonarr
+
+# Run extra commands
+RUN apk update && \
+    apk add --no-cache bc && \
+    apk add --no-cache transmission-cli && \
+    apk add --no-cache transmission-remote
