@@ -7,7 +7,7 @@ VAGRANTFILE_API_VERSION = "2"
 # export ANSIBLE_ARGS='--extra-vars "vagrant=true"'
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
-    config.vm.box = "opensuse/openSUSE-42.3-x86_64"
+    config.vm.box = "opensuse/Leap-15.6.x86_64"
     
     config.vbguest.iso_path = File.expand_path("/Applications/VirtualBox.app/Contents/MacOS/VBoxGuestAdditions.iso", __FILE__)
     config.vbguest.no_remote = true
