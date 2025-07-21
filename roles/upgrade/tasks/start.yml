@@ -1,0 +1,47 @@
+
+- name: "Load disk password"
+  include_vars:
+    file: disk_password.yml
+
+- name: "mount data disk"
+  shell: echo "{{ data_password }}" | /usr/bin/mount-data-drives && btrfs filesystem show /data
+
+- name: "start samba service"
+  systemd: 
+    name: smb
+    state: started
+
+- name: "Start transmission-daemon service"
+  systemd: 
+    name: transmission-daemon
+    state: started
+
+- name: "Start urbackup service"
+  systemd: 
+    name: urbackup-server
+    state: started
+
+- name: "start wireguard"
+  community.docker.docker_compose_v2:
+    project_src: /data/wireguard
+    pull: "always"
+
+- name: "start plex"
+  community.docker.docker_compose_v2:
+    project_src: /data/plex
+    pull: "always"
+
+- name: "start streamline with force build"
+  community.docker.docker_compose_v2:
+    project_src: /data/streamline
+    build: "always"
+    pull: "always"
+
+- name: "start homeassistant"
+  community.docker.docker_compose_v2:
+    project_src: /data/homeassistant
+    pull: "always"
+
+- name: Prune dangling images
+  community.docker.docker_prune:
+    images: true

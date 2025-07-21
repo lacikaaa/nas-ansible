@@ -1,0 +1,4 @@
+- import_tasks: stop.yml
+- import_tasks: upgrade.yml
+- import_tasks: restart.yml
+- import_tasks: start.yml

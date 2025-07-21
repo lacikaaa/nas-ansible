@@ -1,0 +1,19 @@
+- name: "stop streamline"
+  community.docker.docker_compose_v2:
+    project_src: /data/streamline
+    state: absent
+
+- name: "stop plex"
+  community.docker.docker_compose_v2:
+    project_src: /data/plex
+    state: absent
+
+- name: "stop homeassistant"
+  community.docker.docker_compose_v2:
+    project_src: /data/homeassistant
+    state: absent
+
+- name: "stop wireguard"
+  community.docker.docker_compose_v2:
+    project_src: /data/wireguard
+    state: absent

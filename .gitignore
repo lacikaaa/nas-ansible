@@ -44,4 +44,4 @@ password
 *.img
 samba_users.yml
 transmission_pw.yml
-
+disk_password.yml
