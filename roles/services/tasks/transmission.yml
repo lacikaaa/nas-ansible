@@ -24,6 +24,11 @@
     groups: "{{ samba_group }}"
     append: yes
 
+- name: "set transmission user home directory"
+  user:
+    name: transmission
+    home: /var/lib/transmission
+
 - name: "create transmission watch directory"
   file:
     path: "{{ transmission.watch_dir }}"
@@ -32,18 +37,16 @@
 
 - name: "create transmission config directory"
   file:
-    path: /var/lib/transmission/.config/transmission
+    path: /var/lib/transmission/.config/transmission-daemon
     state: directory
     owner: transmission
-    group: transmission
     mode: 0775
 
 - name: "copy transmission config"
   template:
     src: transmission_settings.json.j2
-    dest: /var/lib/transmission/.config/transmission/settings.json
+    dest: /var/lib/transmission/.config/transmission-daemon/settings.json
     owner: transmission
-    group: transmission
     mode: 0664
 
 - name: "Start transmission-daemon service"

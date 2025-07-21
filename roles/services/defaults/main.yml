@@ -48,7 +48,7 @@ shares:
     }
   
 transmission: {
-  "speed_limit_up": 600,
+  "speed_limit_up": 2500,
   "speed_limit_up_enabled": "true",
   "rpc_authentication_required": "true",
   "rpc_bind_address": "0.0.0.0",
