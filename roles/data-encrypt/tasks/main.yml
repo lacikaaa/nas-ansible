@@ -51,7 +51,7 @@
   register: files_to_copy
 - fetch: 
     src: "{{ item }}" 
-    dest: .
+    dest: "./"
     flat: yes
   with_items: "{{ files_to_copy.files | map(attribute='path') | list }}"
 
