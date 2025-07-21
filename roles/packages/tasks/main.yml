@@ -3,6 +3,9 @@
     file: vagrant.yml
   when: vagrant
   
+- name: "Remove bash-completion lock"
+  shell: zypper rl bash-completion
+
 - name: "update system"
   zypper:
     name: '*'
