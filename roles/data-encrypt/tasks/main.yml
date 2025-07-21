@@ -35,7 +35,7 @@
     state: latest
 
 - name: "encrypt disks"
-  shell: cryptsetup isLuks {{ item }} ; [[ $? != 0 ]] && cryptsetup luksFormat --type luks2 --cipher aes-xts-plain64 --key-size 256 --hash sha256 {{ item }} /tmp/keyfile || exit 0
+  shell: cryptsetup isLuks {{ item }} ; [[ $? != 0 ]] && cryptsetup luksFormat -q --type luks2 --cipher aes-xts-plain64 --key-size 256 --hash sha256 {{ item }} /tmp/keyfile || exit 0
   with_items: "{{disks_to_encrypt}}"
 
 - name: "add password to disks"
