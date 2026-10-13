@@ -42,6 +42,11 @@
     project_src: /data/homeassistant
     pull: "always"
 
+- name: "start gpb"
+  community.docker.docker_compose_v2:
+    project_src: /data/gpb
+    pull: "always"
+
 - name: Prune dangling images
   community.docker.docker_prune:
     images: true

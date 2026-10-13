@@ -13,6 +13,11 @@
     project_src: /data/homeassistant
     state: absent
 
+- name: "stop gpb"
+  community.docker.docker_compose_v2:
+    project_src: /data/gpb
+    state: absent
+
 - name: "stop wireguard"
   community.docker.docker_compose_v2:
     project_src: /data/wireguard
