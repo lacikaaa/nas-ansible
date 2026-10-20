@@ -1,0 +1,6 @@
+---
+- hosts: all
+  tasks:
+    - include_role:
+        name: services
+        tasks_from: streamline.yml

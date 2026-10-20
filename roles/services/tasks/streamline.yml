@@ -3,6 +3,23 @@
     path: /data/streamline
     state: directory
 
+- name: Ensure bazarr user exists
+  user:
+    name: bazarr
+    uid: 505
+    group: "{{ samba_group }}"
+    home: /data/bazarr
+    create_home: no
+    shell: /bin/bash
+
+- name: Ensure bazarr config directory exists
+  file:
+    path: /data/bazarr
+    state: directory
+    owner: bazarr
+    group: "{{ samba_group }}"
+    mode: "2770"
+
 - name: "copy Dockerfile-radarr to host"
   copy: 
     src: /{{ role_path }}/files/Dockerfile-radarr

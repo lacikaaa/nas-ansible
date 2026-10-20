@@ -56,6 +56,24 @@ services:
     networks:
       - streamline_net
 
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    volumes:
+      - /data/bazarr:/config
+      - /data/movies/_filmz:/movies
+      - /data/movies/_series:/tv
+    ports:
+      - "6767:6767"
+    environment:
+      - PUID=505
+      - PGID=1000
+      - TZ=Europe/Budapest
+      - UMASK=002
+    networks:
+      - streamline_net
+
 networks:
   streamline_net:
     driver: bridge
