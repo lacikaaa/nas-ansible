@@ -74,6 +74,16 @@ services:
     networks:
       - streamline_net
 
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=info
+      - TZ=Europe/Budapest
+    networks:
+      - streamline_net
+
 networks:
   streamline_net:
     driver: bridge
