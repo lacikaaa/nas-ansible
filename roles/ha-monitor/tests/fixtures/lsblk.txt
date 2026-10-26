@@ -1,0 +1,6 @@
+sda disk
+sdb disk
+zram0 disk
+loop0 loop
+sr0 rom
+sdc disk

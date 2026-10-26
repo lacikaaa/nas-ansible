@@ -1,0 +1,6 @@
+UUID:             00000000-0000-0000-0000-000000000000
+Scrub started:    Tue Oct 13 21:58:32 2026
+Status:           finished
+Error summary:    read=3 csum=5
+  Corrected:      7
+  Uncorrectable:  1

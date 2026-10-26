@@ -1,0 +1,9 @@
+[Unit]
+Description=Publish NAS status to Home Assistant over MQTT
+ConditionPathIsMountPoint=/data
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/nas-ha-agent
+Nice=10
+TimeoutStartSec=120

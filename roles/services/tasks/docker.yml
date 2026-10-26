@@ -6,6 +6,32 @@
     state: present
     reload: yes
 
+- name: "Create docker service drop-in directory"
+  file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: 0755
+
+# /data is unlocked by hand after boot, so docker (and every container with a restart policy)
+# must not start before that. At boot the unit is skipped; start.yml starts it after the unlock.
+- name: "Make docker wait for /data"
+  copy:
+    content: |
+      [Unit]
+      ConditionPathIsMountPoint=/data
+    dest: /etc/systemd/system/docker.service.d/wait-for-data.conf
+    owner: root
+    group: root
+    mode: 0644
+  register: docker_dropin
+
+- name: "Reload systemd after docker drop-in change"
+  systemd:
+    daemon_reload: yes
+  when: docker_dropin is changed
+
 - name: "Start and enable docker service"
   systemd: 
     name: docker

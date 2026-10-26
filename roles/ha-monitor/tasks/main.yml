@@ -1,0 +1,37 @@
+- name: "Check /data is mounted"
+  command: mountpoint -q /data
+  register: data_mounted
+  changed_when: false
+  failed_when: false
+
+- name: "Fail when /data is not mounted"
+  assert:
+    that: data_mounted.rc == 0
+    fail_msg: "/data is not mounted, unlock it with mount-data-drives first"
+
+- name: "Check mqtt password file exists"
+  stat:
+    path: "{{ role_path }}/vars/mqtt_password.yml"
+  delegate_to: localhost
+  become: false
+  register: mqtt_password_file
+
+- name: "Fail when mqtt password file is missing"
+  assert:
+    that: mqtt_password_file.stat.exists
+    fail_msg: "Missing roles/ha-monitor/vars/mqtt_password.yml, copy mqtt_password.yml.example and set a password"
+
+- name: "Load mqtt password"
+  include_vars:
+    file: mqtt_password.yml
+  no_log: true
+
+- name: "Fail when mqtt password is a placeholder or too short"
+  assert:
+    that:
+      - mqtt_password != 'CHANGE_ME'
+      - mqtt_password | string | length >= 12
+    fail_msg: "mqtt_password in roles/ha-monitor/vars/mqtt_password.yml must be changed from CHANGE_ME and be at least 12 characters long"
+
+- import_tasks: mosquitto.yml
+- import_tasks: agent.yml

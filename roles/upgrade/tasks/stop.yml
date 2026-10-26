@@ -13,6 +13,17 @@
     project_src: /data/homeassistant
     state: absent
 
+- name: "check mosquitto compose file"
+  stat:
+    path: /data/mosquitto/docker-compose.yml
+  register: mosquitto_compose_file
+
+- name: "stop mosquitto"
+  community.docker.docker_compose_v2:
+    project_src: /data/mosquitto
+    state: absent
+  when: mosquitto_compose_file.stat.exists
+
 - name: "stop gpb"
   community.docker.docker_compose_v2:
     project_src: /data/gpb

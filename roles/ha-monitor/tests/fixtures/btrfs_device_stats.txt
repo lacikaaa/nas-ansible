@@ -1,0 +1,10 @@
+[/dev/mapper/disk-a].write_io_errs    0
+[/dev/mapper/disk-a].read_io_errs     0
+[/dev/mapper/disk-a].flush_io_errs    0
+[/dev/mapper/disk-a].corruption_errs  2
+[/dev/mapper/disk-a].generation_errs  0
+[/dev/mapper/disk-b].write_io_errs    1
+[/dev/mapper/disk-b].read_io_errs     0
+[/dev/mapper/disk-b].flush_io_errs    0
+[/dev/mapper/disk-b].corruption_errs  0
+[/dev/mapper/disk-b].generation_errs  4

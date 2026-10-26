@@ -1,0 +1,4 @@
+[{"Name":"/plex","State":{"Status":"running","Running":true,"Health":{"Status":"healthy","FailingStreak":0}},"Config":{"Image":"plexinc/pms-docker"}},
+ {"Name":"/swag","State":{"Status":"running","Running":true},"Config":{"Image":"lscr.io/linuxserver/swag:latest"}},
+ {"Name":"/my-sick.app","State":{"Status":"running","Running":true,"Health":{"Status":"unhealthy"}},"Config":{"Image":"example/sick"}},
+ {"Name":"/stopped-one","State":{"Status":"exited","Running":false},"Config":{"Image":"example/stopped"}}]

@@ -45,3 +45,11 @@ password
 samba_users.yml
 transmission_pw.yml
 disk_password.yml
+roles/ha-monitor/vars/mqtt_password.yml
+
+### Python ###
+__pycache__/
+*.pyc
+
+### Editor ###
+.vscode/

@@ -2,9 +2,16 @@
 - name: "Load disk password"
   include_vars:
     file: disk_password.yml
+  no_log: true
 
 - name: "mount data disk"
   shell: echo "{{ data_password }}" | /usr/bin/mount-data-drives && btrfs filesystem show /data
+  no_log: true
+
+- name: "start docker"
+  systemd:
+    name: docker
+    state: started
 
 - name: "start samba service"
   systemd: 
@@ -36,6 +43,17 @@
     project_src: /data/streamline
     build: "always"
     pull: "always"
+
+- name: "check mosquitto compose file"
+  stat:
+    path: /data/mosquitto/docker-compose.yml
+  register: mosquitto_compose_file
+
+- name: "start mosquitto"
+  community.docker.docker_compose_v2:
+    project_src: /data/mosquitto
+    pull: "always"
+  when: mosquitto_compose_file.stat.exists
 
 - name: "start homeassistant"
   community.docker.docker_compose_v2:

@@ -1,0 +1,79 @@
+- name: "Ensure mosquitto directories exist"
+  file:
+    path: "/data/mosquitto{{ item }}"
+    state: directory
+    owner: "1883"
+    group: "1883"
+    mode: 0755
+  loop:
+    - ""
+    - /config
+    - /data
+    - /log
+
+- name: "copy mosquitto.conf"
+  template:
+    src: mosquitto.conf.j2
+    dest: /data/mosquitto/config/mosquitto.conf
+    owner: "1883"
+    group: "1883"
+    mode: 0644
+  register: mosquitto_conf
+
+- name: "copy mosquitto compose file"
+  template:
+    src: docker-compose-mosquitto.yml.j2
+    dest: /data/mosquitto/docker-compose.yml
+  register: mosquitto_compose
+
+- name: "Check mosquitto password file"
+  stat:
+    path: /data/mosquitto/config/passwd
+  register: mosquitto_passwd_file
+
+- name: "Check mosquitto password hash file"
+  stat:
+    path: /data/mosquitto/config/passwd.sha256
+  register: mosquitto_passwd_hash_file
+
+- name: "Read stored mosquitto password hash"
+  slurp:
+    src: /data/mosquitto/config/passwd.sha256
+  register: mosquitto_passwd_hash
+  when: mosquitto_passwd_hash_file.stat.exists
+  no_log: true
+
+- name: "Create mosquitto password file"
+  command: >-
+    docker run --rm -v /data/mosquitto/config:/mosquitto/config
+    {{ mosquitto_image }}
+    mosquitto_passwd -b -c /mosquitto/config/passwd {{ mqtt_user | quote }} {{ mqtt_password | quote }}
+  when: >-
+    not mosquitto_passwd_file.stat.exists
+    or not mosquitto_passwd_hash_file.stat.exists
+    or (mosquitto_passwd_hash.content | b64decode | trim) != (mqtt_password | hash('sha256'))
+  register: mosquitto_passwd_created
+  no_log: true
+
+- name: "Store mosquitto password hash"
+  copy:
+    content: "{{ mqtt_password | hash('sha256') }}\n"
+    dest: /data/mosquitto/config/passwd.sha256
+    owner: root
+    group: root
+    mode: 0600
+  when: mosquitto_passwd_created is changed
+  no_log: true
+
+- name: "Fix mosquitto password file permissions"
+  file:
+    path: /data/mosquitto/config/passwd
+    owner: "1883"
+    group: "1883"
+    mode: 0600
+
+- name: "start mosquitto"
+  community.docker.docker_compose_v2:
+    project_src: /data/mosquitto
+    pull: "always"
+    recreate: "{{ 'always' if (mosquitto_conf is changed or mosquitto_compose is changed or mosquitto_passwd_created is changed) else 'auto' }}"

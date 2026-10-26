@@ -1,0 +1,7 @@
+UUID:             00000000-0000-0000-0000-000000000000
+Scrub started:    Tue Oct 13 21:58:32 2026
+Status:           finished
+Duration:         7:35:56
+Total to scrub:   8.70TiB
+Rate:             333.50MiB/s
+Error summary:    no errors found

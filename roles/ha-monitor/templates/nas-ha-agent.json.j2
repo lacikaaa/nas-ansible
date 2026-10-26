@@ -1,0 +1,12 @@
+{{ {
+  "mqtt_host": "127.0.0.1",
+  "mqtt_port": 1883,
+  "mqtt_user": mqtt_user,
+  "mqtt_password": mqtt_password,
+  "units": ha_monitor_units,
+  "filesystems": {"data": "/data", "system": "/"},
+  "urbackup_db": "/var/urbackup/backup_server.db",
+  "urbackup_ignore_clients": urbackup_ignore_clients,
+  "smart_interval_s": 1800,
+  "cache_dir": "/var/cache/nas-ha-agent"
+} | to_nice_json }}

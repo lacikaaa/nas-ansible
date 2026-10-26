@@ -1,0 +1,821 @@
+#!/usr/bin/python3
+"""nas-ha-agent: publish NAS health to Home Assistant over MQTT.
+
+Stdlib only. Collects storage, btrfs, SMART, systemd units, docker containers,
+UrBackup and Samba data, then publishes one device-based MQTT discovery message
+(homeassistant/device/nas_agent/config) and one state message (nas/state).
+Meant to run as a oneshot unit every minute as root.
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import socket
+import sqlite3
+import struct
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+
+VERSION = "1.0"
+DISCOVERY_TOPIC = "homeassistant/device/nas_agent/config"
+STATE_TOPIC = "nas/state"
+DISCOVERY_MAX_AGE_S = 3600
+CMD_TIMEOUT_S = 20
+SEARCH_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+UNIT_RE = re.compile(r"^[A-Za-z0-9_@.:-]+$")
+DISK_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+SKIP_DISK_PREFIXES = ("zram", "loop", "ram")
+
+DEFAULT_CONFIG = {
+    "mqtt_host": "127.0.0.1",
+    "mqtt_port": 1883,
+    "mqtt_user": "nas-agent",
+    "mqtt_password": "",
+    "units": ["smb", "transmission-daemon", "urbackup-server", "sshd", "docker",
+              "smartd", "apcupsd"],
+    "filesystems": {"data": "/data", "system": "/"},
+    "urbackup_db": "/var/urbackup/backup_server.db",
+    "urbackup_ignore_clients": ["mmolnar-5540-ubuntu"],
+    "smart_interval_s": 1800,
+    "cache_dir": "/var/cache/nas-ha-agent",
+}
+
+
+def log(msg):
+    print("nas-ha-agent: %s" % msg, file=sys.stderr)
+
+
+# --------------------------------------------------------------------------
+# Config
+# --------------------------------------------------------------------------
+
+class ConfigError(Exception):
+    pass
+
+
+def slug(text):
+    """Lowercase, every non-alphanumeric character becomes an underscore."""
+    return re.sub(r"[^a-z0-9]", "_", str(text).lower())
+
+
+def validate_config(raw):
+    """Merge a decoded config over the defaults and validate every value."""
+    if not isinstance(raw, dict):
+        raise ConfigError("config must be a JSON object")
+    cfg = dict(DEFAULT_CONFIG)
+    unknown = set(raw) - set(DEFAULT_CONFIG)
+    if unknown:
+        log("ignoring unknown config keys: %s" % ", ".join(sorted(unknown)))
+    cfg.update({k: v for k, v in raw.items() if k in DEFAULT_CONFIG})
+
+    for key in ("mqtt_host", "mqtt_user", "mqtt_password", "urbackup_db", "cache_dir"):
+        if not isinstance(cfg[key], str):
+            raise ConfigError("%s must be a string" % key)
+    if not cfg["mqtt_host"]:
+        raise ConfigError("mqtt_host must not be empty")
+    port = cfg["mqtt_port"]
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise ConfigError("mqtt_port must be an integer 1-65535")
+    interval = cfg["smart_interval_s"]
+    if isinstance(interval, bool) or not isinstance(interval, int) or interval < 0:
+        raise ConfigError("smart_interval_s must be a non-negative integer")
+    units = cfg["units"]
+    if not isinstance(units, list) or not all(isinstance(u, str) and UNIT_RE.match(u)
+                                              and not u.startswith("-") for u in units):
+        raise ConfigError("units must be a list of systemd unit names")
+    ignore = cfg["urbackup_ignore_clients"]
+    if not isinstance(ignore, list) or not all(isinstance(c, str) for c in ignore):
+        raise ConfigError("urbackup_ignore_clients must be a list of strings")
+    fss = cfg["filesystems"]
+    if not isinstance(fss, dict) or not all(
+            isinstance(k, str) and slug(k) == k and k and isinstance(v, str)
+            and os.path.isabs(v) for k, v in fss.items()):
+        raise ConfigError("filesystems must map lowercase [a-z0-9_] names to absolute paths")
+    return cfg
+
+
+def load_config(path, dry_run):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except FileNotFoundError:
+        if dry_run:
+            log("config %s not found, using built-in defaults (dry run)" % path)
+            return validate_config({})
+        raise ConfigError("config %s not found" % path)
+    except (OSError, ValueError) as exc:
+        raise ConfigError("cannot read config %s: %s" % (path, exc))
+    return validate_config(raw)
+
+
+# --------------------------------------------------------------------------
+# Minimal MQTT 3.1.1 client
+# --------------------------------------------------------------------------
+
+class MqttError(Exception):
+    pass
+
+
+def encode_remaining_length(n):
+    if n < 0 or n > 268435455:
+        raise ValueError("remaining length out of range")
+    out = bytearray()
+    while True:
+        byte = n % 128
+        n //= 128
+        if n:
+            byte |= 0x80
+        out.append(byte)
+        if not n:
+            return bytes(out)
+
+
+def _utf8(text):
+    data = text.encode("utf-8")
+    if len(data) > 65535:
+        raise ValueError("string too long for MQTT")
+    return struct.pack(">H", len(data)) + data
+
+
+def build_connect(client_id, user, password, keepalive=30):
+    flags = 0x02  # clean session
+    payload = _utf8(client_id)
+    if user:
+        flags |= 0x80
+        payload += _utf8(user)
+        if password:
+            flags |= 0x40
+            payload += _utf8(password)
+    body = _utf8("MQTT") + bytes([4, flags]) + struct.pack(">H", keepalive) + payload
+    return b"\x10" + encode_remaining_length(len(body)) + body
+
+
+def build_publish(topic, payload, retain=False):
+    if isinstance(payload, str):
+        payload = payload.encode("utf-8")
+    body = _utf8(topic) + payload
+    first = 0x30 | (1 if retain else 0)  # QoS 0, no packet id
+    return bytes([first]) + encode_remaining_length(len(body)) + body
+
+
+DISCONNECT_PACKET = b"\xe0\x00"
+
+CONNACK_ERRORS = {
+    1: "unacceptable protocol version",
+    2: "identifier rejected",
+    3: "server unavailable",
+    4: "bad user name or password",
+    5: "not authorized",
+}
+
+
+def parse_connack(data):
+    if len(data) != 4 or data[0] != 0x20 or data[1] != 2:
+        raise MqttError("malformed CONNACK")
+    if data[3] != 0:
+        raise MqttError("connection refused: %s" % CONNACK_ERRORS.get(data[3], data[3]))
+
+
+def _recv_exact(sock, n):
+    buf = b""
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            raise MqttError("connection closed by broker")
+        buf += chunk
+    return buf
+
+
+class MqttClient:
+    def __init__(self, host, port, user, password, client_id="nas-ha-agent", timeout=10):
+        self.host, self.port = host, port
+        self.user, self.password = user, password
+        self.client_id, self.timeout = client_id, timeout
+        self.sock = None
+
+    def connect(self):
+        try:
+            self.sock = socket.create_connection((self.host, self.port), self.timeout)
+            self.sock.settimeout(self.timeout)
+            self.sock.sendall(build_connect(self.client_id, self.user, self.password))
+            parse_connack(_recv_exact(self.sock, 4))
+        except OSError as exc:
+            self.close()
+            raise MqttError("cannot connect to %s:%s: %s" % (self.host, self.port, exc))
+        except MqttError:
+            self.close()
+            raise
+
+    def publish(self, topic, payload, retain=False):
+        try:
+            self.sock.sendall(build_publish(topic, payload, retain))
+        except OSError as exc:
+            raise MqttError("publish failed: %s" % exc)
+
+    def disconnect(self):
+        try:
+            if self.sock:
+                self.sock.sendall(DISCONNECT_PACKET)
+        except OSError:
+            pass
+        self.close()
+
+    def close(self):
+        if self.sock:
+            try:
+                self.sock.close()
+            except OSError:
+                pass
+            self.sock = None
+
+
+# --------------------------------------------------------------------------
+# Command helper
+# --------------------------------------------------------------------------
+
+def run_cmd(args, timeout=CMD_TIMEOUT_S):
+    """Run a command, return stdout. Non-zero exit is not an error (smartctl,
+    systemctl is-active); a missing binary or a timeout raises."""
+    exe = shutil.which(args[0], path=SEARCH_PATH)
+    if exe is None:
+        raise RuntimeError("%s not found" % args[0])
+    env = dict(os.environ, LC_ALL="C", LANG="C", PATH=SEARCH_PATH)
+    proc = subprocess.run([exe] + list(args[1:]), stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, timeout=timeout, env=env,
+                          text=True, errors="replace", check=False)
+    return proc.stdout
+
+
+# --------------------------------------------------------------------------
+# Component builders
+# --------------------------------------------------------------------------
+
+def comp(platform, key, name, **extra):
+    """Build a discovery component for state key `key`."""
+    domain = "binary_sensor" if platform == "binary_sensor" else "sensor"
+    entity_id = "%s.nas_%s" % (domain, key)
+    c = {
+        "p": platform,
+        "unique_id": entity_id.replace(".", "_"),
+        "default_entity_id": entity_id,
+        "name": name,
+        "value_template": "{{ value_json['%s'] }}" % key,
+        "expire_after": 300,
+    }
+    c.update(extra)
+    c = {k: v for k, v in c.items() if v is not None}
+    return c
+
+
+def sensor(key, name, unit=None, device_class=None, state_class=None, **extra):
+    return comp("sensor", key, name, unit_of_measurement=unit, device_class=device_class,
+                state_class=state_class, **extra)
+
+
+def binary_sensor(key, name, device_class=None, **extra):
+    return comp("binary_sensor", key, name, device_class=device_class, **extra)
+
+
+def on_off(flag):
+    return "ON" if flag else "OFF"
+
+
+def iso_now():
+    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+# --------------------------------------------------------------------------
+# Parsers (pure)
+# --------------------------------------------------------------------------
+
+def parse_statvfs(st):
+    """Return (used_percent, free_gib) from an os.statvfs result."""
+    free = st.f_bavail * st.f_frsize
+    used = (st.f_blocks - st.f_bfree) * st.f_frsize
+    avail_total = used + free
+    percent = round(100.0 * used / avail_total, 1) if avail_total else 0.0
+    return percent, round(free / 1024 ** 3, 1)
+
+
+def parse_btrfs_device_stats(text):
+    """Sum all counters of `btrfs device stats`."""
+    total = 0
+    seen = False
+    for line in text.splitlines():
+        m = re.match(r"^\[[^\]]+\]\.\w+\s+(\d+)\s*$", line.strip())
+        if m:
+            total += int(m.group(1))
+            seen = True
+    if not seen:
+        raise ValueError("no counters in btrfs device stats output")
+    return total
+
+
+def parse_btrfs_scrub(text):
+    """Return (last_scrub_iso_or_None, error_count) from `btrfs scrub status`
+    (run with LC_ALL=C). The start time is local time."""
+    when = None
+    errors = 0
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("Scrub started:"):
+            raw = line.split(":", 1)[1].strip()
+            try:
+                when = datetime.strptime(raw, "%a %b %d %H:%M:%S %Y").astimezone() \
+                    .isoformat(timespec="seconds")
+            except ValueError:
+                when = None
+        elif line.startswith("Error summary:"):
+            rest = line.split(":", 1)[1].strip()
+            if rest and "no errors found" not in rest:
+                errors = sum(int(n) for n in re.findall(r"=(\d+)", rest))
+    return when, errors
+
+
+def parse_lsblk_disks(text):
+    disks = []
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] == "disk":
+            name = parts[0]
+            if DISK_RE.match(name) and not name.startswith(SKIP_DISK_PREFIXES):
+                disks.append(name)
+    return disks
+
+
+def _smart_attr(data, attr_id):
+    for attr in (data.get("ata_smart_attributes") or {}).get("table") or []:
+        if attr.get("id") == attr_id:
+            raw = attr.get("raw") or {}
+            return raw.get("value")
+    return None
+
+
+def parse_smartctl(data):
+    """Parse decoded `smartctl -j -H -A` output into state values. Keys that
+    the device does not report are omitted."""
+    if not isinstance(data, dict):
+        raise ValueError("smartctl output is not a JSON object")
+    passed = (data.get("smart_status") or {}).get("passed")
+    out = {"smart": on_off(passed is not True)}
+    temp = (data.get("temperature") or {}).get("current")
+    if temp is None:
+        raw = _smart_attr(data, 194)
+        temp = raw & 0xFF if isinstance(raw, int) else None
+    if temp is not None:
+        out["temperature"] = temp
+    for key, attr_id in (("reallocated", 5), ("pending", 197)):
+        value = _smart_attr(data, attr_id)
+        if value is not None:
+            out[key] = value
+    hours = (data.get("power_on_time") or {}).get("hours")
+    if hours is None:
+        hours = _smart_attr(data, 9)
+    if hours is not None:
+        out["power_on_hours"] = hours
+    return out
+
+
+def parse_is_active(units, text):
+    """`systemctl is-active a b c` prints one state per line."""
+    lines = text.splitlines()
+    return {u: (i < len(lines) and lines[i].strip() == "active") for i, u in enumerate(units)}
+
+
+def parse_docker_inspect(items):
+    """Return {slug_name: {"status","health","image"}} from `docker inspect`."""
+    result = {}
+    for item in items:
+        name = str(item.get("Name", "")).lstrip("/")
+        if not name:
+            continue
+        state = item.get("State") or {}
+        health = (state.get("Health") or {}).get("Status") or "none"
+        sl = slug(name)
+        if sl in result:
+            log("container %r slugs to %r, same as %r; ignoring it"
+                % (name, sl, result[sl]["name"]))
+            continue
+        result[sl] = {
+            "name": name,
+            "status": state.get("Status", "unknown"),
+            "health": health,
+            "image": (item.get("Config") or {}).get("Image", ""),
+        }
+    return result
+
+
+def container_is_up(info):
+    return info["status"] == "running" and info["health"] != "unhealthy"
+
+
+def parse_samba_sessions(text):
+    try:
+        data = json.loads(text)
+        sessions = data.get("sessions")
+        if isinstance(sessions, dict):
+            return len(sessions)
+    except ValueError:
+        pass
+    # text fallback: rows after the dashed separator
+    count = 0
+    after_sep = False
+    for line in text.splitlines():
+        if re.match(r"^-{10,}\s*$", line):
+            after_sep = True
+        elif after_sep and line.strip():
+            count += 1
+    if not after_sep:
+        raise ValueError("unrecognised smbstatus output")
+    return count
+
+
+def urbackup_time_to_iso(value):
+    """UrBackup stores 'YYYY-MM-DD HH:MM:SS' in UTC (verified against the
+    sqlite clock and a client that backs up hourly)."""
+    dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    return dt.astimezone().isoformat(timespec="seconds")
+
+
+URBACKUP_QUERY = """
+SELECT c.name, MAX(b.t)
+FROM clients c
+LEFT JOIN (
+  SELECT clientid, backuptime AS t FROM backups
+    WHERE complete = 1 AND CAST(COALESCE(NULLIF(delete_pending, ''), 0) AS INTEGER) = 0
+  UNION ALL
+  SELECT clientid, backuptime AS t FROM backup_images
+    WHERE complete = 1 AND CAST(COALESCE(NULLIF(delete_pending, ''), 0) AS INTEGER) = 0
+) b ON b.clientid = c.id
+WHERE CAST(COALESCE(NULLIF(c.delete_pending, ''), 0) AS INTEGER) = 0
+GROUP BY c.id
+"""
+
+
+def query_urbackup(conn, ignore):
+    """Return {client name: iso timestamp} for clients that have a backup."""
+    out = {}
+    for name, newest in conn.execute(URBACKUP_QUERY):
+        if not name or name in ignore or not newest:
+            continue
+        out[name] = urbackup_time_to_iso(newest)
+    return out
+
+
+# --------------------------------------------------------------------------
+# Collectors: each returns (state dict, components dict)
+# --------------------------------------------------------------------------
+
+class Collection:
+    """Gathers state and components; a failing group is logged and recorded so
+    its previously published components are not removed."""
+
+    def __init__(self):
+        self.state = {}
+        self.comps = {}   # key -> (group, component)
+        self.failed = set()
+
+    def attempt(self, group, fn):
+        try:
+            state, comps = fn()
+        except Exception as exc:  # collector failures must never stop the run
+            log("collector %s failed: %s: %s" % (group, type(exc).__name__, exc))
+            self.failed.add(group)
+            return False
+        self.state.update(state)
+        for key, c in comps.items():
+            self.comps[key] = (group, c)
+        return True
+
+
+def collect_storage(name, path):
+    percent, free = parse_statvfs(os.statvfs(path))
+    state = {"%s_used_percent" % name: percent, "%s_free" % name: free}
+    comps = {
+        "%s_used_percent" % name: sensor("%s_used_percent" % name,
+                                         "%s used" % name.capitalize(), "%",
+                                         state_class="measurement",
+                                         suggested_display_precision=1),
+        "%s_free" % name: sensor("%s_free" % name, "%s free" % name.capitalize(), "GiB",
+                                 "data_size", "measurement", suggested_display_precision=1),
+    }
+    return state, comps
+
+
+def collect_btrfs(name, path, with_scrub):
+    errors = parse_btrfs_device_stats(run_cmd(["btrfs", "device", "stats", path]))
+    key = "btrfs_%s_errors" % name
+    state = {key: errors}
+    comps = {key: sensor(key, "Btrfs %s errors" % name, state_class="measurement",
+                         icon="mdi:alert-circle-outline")}
+    if with_scrub:
+        when, scrub_errors = parse_btrfs_scrub(run_cmd(["btrfs", "scrub", "status", path]))
+        state["btrfs_%s_last_scrub" % name] = when
+        state["btrfs_%s_scrub_errors" % name] = scrub_errors
+        comps["btrfs_%s_last_scrub" % name] = sensor(
+            "btrfs_%s_last_scrub" % name, "Btrfs %s last scrub" % name,
+            device_class="timestamp")
+        comps["btrfs_%s_scrub_errors" % name] = sensor(
+            "btrfs_%s_scrub_errors" % name, "Btrfs %s scrub errors" % name,
+            state_class="measurement")
+    return state, comps
+
+
+def smart_components(disk, values):
+    p = "disk_%s_" % slug(disk)
+    label = "Disk %s" % disk
+    comps = {
+        p + "smart": binary_sensor(p + "smart", label + " SMART problem", "problem"),
+    }
+    if "temperature" in values:
+        comps[p + "temperature"] = sensor(p + "temperature", label + " temperature", "°C",
+                                          "temperature", "measurement")
+    if "reallocated" in values:
+        comps[p + "reallocated"] = sensor(p + "reallocated", label + " reallocated sectors",
+                                          state_class="measurement")
+    if "pending" in values:
+        comps[p + "pending"] = sensor(p + "pending", label + " pending sectors",
+                                      state_class="measurement")
+    if "power_on_hours" in values:
+        comps[p + "power_on_hours"] = sensor(p + "power_on_hours", label + " power-on hours",
+                                             "h", state_class="total_increasing",
+                                             entity_category="diagnostic")
+    return comps
+
+
+def collect_smart_disk(disk):
+    out = run_cmd(["smartctl", "-j", "-H", "-A", "/dev/%s" % disk])
+    values = parse_smartctl(json.loads(out))
+    p = "disk_%s_" % slug(disk)
+    return {p + k: v for k, v in values.items()}, smart_components(disk, values)
+
+
+def collect_services(units):
+    if not units:
+        return {}, {}
+    active = parse_is_active(units, run_cmd(["systemctl", "is-active"] + list(units)))
+    state, comps = {}, {}
+    for unit, is_up in active.items():
+        key = "service_%s" % slug(unit)
+        state[key] = on_off(is_up)
+        comps[key] = binary_sensor(key, "Service %s" % unit, "running")
+    return state, comps
+
+
+def collect_containers():
+    names = run_cmd(["docker", "ps", "-a", "--format", "{{.Names}}"]).split()
+    infos = {}
+    if names:
+        infos = parse_docker_inspect(json.loads(run_cmd(["docker", "inspect"] + names)))
+    state = {
+        "containers_running": sum(1 for i in infos.values() if i["status"] == "running"),
+        "containers_total": len(infos),
+        "containers_attr": {},
+    }
+    comps = {
+        "containers_running": sensor("containers_running", "Containers running",
+                                     state_class="measurement", icon="mdi:docker"),
+        "containers_total": sensor("containers_total", "Containers total",
+                                   state_class="measurement", icon="mdi:docker"),
+    }
+    for sl, info in infos.items():
+        key = "container_%s" % sl
+        state[key] = on_off(container_is_up(info))
+        state["containers_attr"][sl] = {"status": info["status"], "health": info["health"],
+                                        "image": info["image"]}
+        comps[key] = binary_sensor(
+            key, "Container %s" % info["name"], "running",
+            json_attributes_topic=STATE_TOPIC,
+            json_attributes_template="{{ value_json['containers_attr']['%s'] | tojson }}" % sl)
+    return state, comps
+
+
+def collect_urbackup(db_path, ignore):
+    conn = sqlite3.connect("file:%s?mode=ro" % db_path, uri=True, timeout=5)
+    try:
+        times = query_urbackup(conn, set(ignore))
+    finally:
+        conn.close()
+    state, comps = {}, {}
+    for name, iso in times.items():
+        key = "urbackup_%s_last_backup" % slug(name)
+        state[key] = iso
+        comps[key] = sensor(key, "UrBackup %s last backup" % name, device_class="timestamp")
+    return state, comps
+
+
+def collect_samba():
+    count = parse_samba_sessions(run_cmd(["smbstatus", "-b", "--json"]))
+    return ({"samba_sessions": count},
+            {"samba_sessions": sensor("samba_sessions", "Samba sessions",
+                                      state_class="measurement", icon="mdi:folder-network")})
+
+
+def collect_misc():
+    state = {
+        "reboot_required": on_off(os.path.exists("/run/reboot-needed")),
+        "agent_last_report": iso_now(),
+    }
+    comps = {
+        "reboot_required": binary_sensor("reboot_required", "Reboot required",
+                                         icon="mdi:restart-alert"),
+        "agent_last_report": sensor("agent_last_report", "Agent last report",
+                                    device_class="timestamp", entity_category="diagnostic",
+                                    expire_after=None),
+    }
+    return state, comps
+
+
+# --------------------------------------------------------------------------
+# Cache
+# --------------------------------------------------------------------------
+
+def read_json(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def write_json(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh)
+    os.replace(tmp, path)
+
+
+def collect_smart(col, cfg, cache, now):
+    """SMART data is cached per disk for smart_interval_s. `cache` is the
+    decoded smart cache and is updated in place."""
+    try:
+        disks = parse_lsblk_disks(run_cmd(["lsblk", "-dn", "-o", "NAME,TYPE"]))
+    except Exception as exc:
+        log("collector smart failed: %s: %s" % (type(exc).__name__, exc))
+        col.failed.add("smart")
+        return
+    for stale in set(cache) - set(disks):
+        del cache[stale]
+    for disk in disks:
+        group = "smart:%s" % disk
+        entry = cache.get(disk)
+        if entry and now - entry.get("ts", 0) < cfg["smart_interval_s"]:
+            if entry.get("failed"):
+                # negative cache: no data, keep the components, wait for the interval
+                col.failed.add(group)
+            else:
+                col.attempt(group, lambda e=entry: (e["state"], e["comps"]))
+            continue
+        fresh = {}
+
+        def work(d=disk, box=fresh):
+            state, comps = collect_smart_disk(d)
+            box.update(state=state, comps=comps)
+            return state, comps
+
+        # on failure the previous components are kept by build_discovery
+        if col.attempt(group, work):
+            cache[disk] = {"ts": now, "state": fresh["state"], "comps": fresh["comps"]}
+        else:
+            cache[disk] = {"ts": now, "failed": True}
+
+
+def collect_all(cfg, smart_cache, now=None):
+    now = time.time() if now is None else now
+    col = Collection()
+    for name, path in cfg["filesystems"].items():
+        col.attempt("storage:%s" % name, lambda n=name, p=path: collect_storage(n, p))
+        col.attempt("btrfs:%s" % name,
+                    lambda n=name, p=path: collect_btrfs(n, p, n == "data"))
+    collect_smart(col, cfg, smart_cache, now)
+    col.attempt("services", lambda: collect_services(cfg["units"]))
+    col.attempt("containers", collect_containers)
+    col.attempt("urbackup", lambda: collect_urbackup(cfg["urbackup_db"],
+                                                     cfg["urbackup_ignore_clients"]))
+    col.attempt("samba", collect_samba)
+    col.attempt("misc", collect_misc)
+    return col
+
+
+# --------------------------------------------------------------------------
+# Discovery
+# --------------------------------------------------------------------------
+
+def group_failed(group, failed):
+    return any(group == f or group.startswith(f + ":") for f in failed)
+
+
+def build_discovery(comps, failed, prev):
+    """Build the device discovery payload.
+
+    comps: key -> (group, component) collected now.
+    failed: failed group names; their previous components are carried over.
+    prev: key -> {"group","comp"} from the previous published discovery.
+    Returns (payload, live) where `live` is the cache form of the components
+    that are part of this payload (without removals).
+    """
+    live = {k: {"group": g, "comp": c} for k, (g, c) in comps.items()}
+    cmps = {}
+    for key, entry in prev.items():
+        if key in live:
+            continue
+        if group_failed(entry["group"], failed):
+            live[key] = entry
+        else:
+            cmps["nas_" + key] = {"p": entry["comp"]["p"]}
+    for key in sorted(live):
+        cmps["nas_" + key] = live[key]["comp"]
+    payload = {
+        "dev": {"ids": ["nas_agent"], "name": "NAS", "mf": "HPE",
+                "mdl": "ProLiant MicroServer Gen10"},
+        "o": {"name": "nas-ha-agent", "sw": VERSION},
+        "state_topic": STATE_TOPIC,
+        "cmps": cmps,
+    }
+    return payload, live
+
+
+def payload_hash(payload):
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def need_discovery(digest, meta, now, force):
+    if force or not meta:
+        return True
+    return meta.get("hash") != digest or now - meta.get("ts", 0) >= DISCOVERY_MAX_AGE_S
+
+
+# --------------------------------------------------------------------------
+# main
+# --------------------------------------------------------------------------
+
+def parse_args(argv):
+    ap = argparse.ArgumentParser(description="Publish NAS health to Home Assistant via MQTT")
+    ap.add_argument("--config", default="/etc/nas-ha-agent.json")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="collect and print discovery and state JSON, do not connect or write")
+    ap.add_argument("--force-discovery", action="store_true",
+                    help="republish the discovery message even if unchanged")
+    return ap.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    try:
+        cfg = load_config(args.config, args.dry_run)
+    except ConfigError as exc:
+        log(str(exc))
+        return 2
+
+    cache_dir = cfg["cache_dir"]
+    smart_path = os.path.join(cache_dir, "smart.json")
+    disc_path = os.path.join(cache_dir, "discovery.json")
+    smart_cache = read_json(smart_path)
+    if not isinstance(smart_cache, dict):
+        smart_cache = {}
+    meta = read_json(disc_path)
+    if not isinstance(meta, dict):
+        meta = {}
+    prev = meta.get("cmps") if isinstance(meta.get("cmps"), dict) else {}
+
+    now = time.time()
+    col = collect_all(cfg, smart_cache, now)
+    payload, live = build_discovery(col.comps, col.failed, prev)
+    digest = payload_hash(payload)
+    publish_disc = need_discovery(digest, meta, now, args.force_discovery)
+
+    if args.dry_run:
+        print(json.dumps({"discovery": payload, "state": col.state}, indent=2,
+                         sort_keys=True))
+        return 0
+
+    client = MqttClient(cfg["mqtt_host"], cfg["mqtt_port"], cfg["mqtt_user"],
+                        cfg["mqtt_password"])
+    try:
+        client.connect()
+        if publish_disc:
+            client.publish(DISCOVERY_TOPIC, json.dumps(payload, sort_keys=True), retain=True)
+        client.publish(STATE_TOPIC, json.dumps(col.state, sort_keys=True), retain=False)
+        client.disconnect()
+    except MqttError as exc:
+        client.close()
+        log(str(exc))
+        return 0
+
+    try:
+        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+        write_json(smart_path, smart_cache)
+        if publish_disc:
+            write_json(disc_path, {"hash": digest, "ts": now, "cmps": live})
+    except OSError as exc:
+        log("cannot write cache in %s: %s" % (cache_dir, exc))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

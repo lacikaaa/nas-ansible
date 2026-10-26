@@ -1,0 +1,26 @@
+services:
+  mosquitto:
+    image: {{ mosquitto_image }}
+    container_name: mosquitto
+    # Not restarted by dockerd at boot: /data is unlocked by hand, started by the upgrade role or `docker compose up -d`.
+    restart: "no"
+    ports:
+      - "127.0.0.1:1883:1883"
+    # Long syntax with create_host_path: false, so a start before /data is mounted fails instead of
+    # creating empty dirs under the bare mountpoint.
+    volumes:
+      - type: bind
+        source: /data/mosquitto/config
+        target: /mosquitto/config
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /data/mosquitto/data
+        target: /mosquitto/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /data/mosquitto/log
+        target: /mosquitto/log
+        bind:
+          create_host_path: false

@@ -1,0 +1,9 @@
+---
+- hosts: all
+  tasks:
+    # docker must wait for the manual /data unlock (drop-in), applied here too so it ships with the monitoring
+    - include_role:
+        name: services
+        tasks_from: docker.yml
+    - include_role:
+        name: ha-monitor

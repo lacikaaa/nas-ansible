@@ -30,3 +30,18 @@ Based on:
 - http://manpages.ubuntu.com/manpages/bionic/man8/blazer_usb.8.html
 
 Change the passwords under: `roles/nut/vars/passwords.yml`
+
+# HA monitoring
+The `ha-monitor` role installs a Mosquitto broker (compose project in `/data/mosquitto`, listening on 127.0.0.1:1883 only)
+and `nas-ha-agent`, a systemd timer (every minute) that publishes NAS status to Home Assistant over MQTT.
+
+Create the password file from the example and set a password:
+```
+cp roles/ha-monitor/vars/mqtt_password.yml.example roles/ha-monitor/vars/mqtt_password.yml
+```
+
+Run role with:
+```
+.venv/bin/ansible-playbook -i inventory/inventory.yml ha-monitor.yml
+```
+`/data` must be unlocked first (`mount-data-drives`), the broker and its config live there.

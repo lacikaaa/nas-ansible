@@ -1,0 +1,3 @@
+Samba version 4.22.11
+PID     Username     Group        Machine   Protocol Version
+-------------------------------------------------------------------------

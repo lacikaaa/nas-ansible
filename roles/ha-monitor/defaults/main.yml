@@ -1,0 +1,12 @@
+mqtt_user: nas-agent
+mosquitto_image: eclipse-mosquitto:2
+ha_monitor_units:
+  - smb
+  - transmission-daemon
+  - urbackup-server
+  - sshd
+  - docker
+  - smartd
+  - apcupsd
+urbackup_ignore_clients:
+  - mmolnar-5540-ubuntu

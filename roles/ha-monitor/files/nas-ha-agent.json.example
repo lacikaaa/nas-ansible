@@ -1,0 +1,12 @@
+{
+  "mqtt_host": "127.0.0.1",
+  "mqtt_port": 1883,
+  "mqtt_user": "nas-agent",
+  "mqtt_password": "CHANGE_ME",
+  "units": ["smb", "transmission-daemon", "urbackup-server", "sshd", "docker", "smartd", "apcupsd"],
+  "filesystems": {"data": "/data", "system": "/"},
+  "urbackup_db": "/var/urbackup/backup_server.db",
+  "urbackup_ignore_clients": ["mmolnar-5540-ubuntu"],
+  "smart_interval_s": 1800,
+  "cache_dir": "/var/cache/nas-ha-agent"
+}

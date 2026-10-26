@@ -1,0 +1,6 @@
+Samba version 4.22.11
+PID     Username     Group        Machine   Protocol Version
+-------------------------------------------------------------------------
+1234  u  g  host (ipv4:1.2.3.4:5)  SMB3_11
+5678  v  g  host2 (ipv4:1.2.3.5:5)  SMB3_11
+
