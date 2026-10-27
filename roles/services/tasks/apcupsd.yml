@@ -1,0 +1,13 @@
+# Network info server for the Home Assistant apcupsd integration (host network, localhost:3551) only
+- name: "bind apcupsd network info server to localhost"
+  lineinfile:
+    path: /etc/apcupsd/apcupsd.conf
+    regexp: '^NISIP '
+    line: NISIP 127.0.0.1
+  register: apcupsd_conf
+
+- name: "restart apcupsd"
+  systemd:
+    name: apcupsd
+    state: restarted
+  when: apcupsd_conf.changed
