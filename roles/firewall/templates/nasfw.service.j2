@@ -1,0 +1,15 @@
+[Unit]
+Description=NAS firewall (nftables table inet nasfw)
+# Not the distro nftables.service: its config flushes the whole ruleset, Docker's tables included.
+Wants=network-pre.target
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nasfw.nft
+ExecReload=/usr/sbin/nft -f /etc/nasfw.nft
+ExecStop=-/usr/sbin/nft delete table inet nasfw
+
+[Install]
+WantedBy=multi-user.target

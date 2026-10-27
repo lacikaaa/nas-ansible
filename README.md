@@ -55,3 +55,24 @@ Run role with:
 .venv/bin/ansible-playbook -i inventory/inventory.yml ha-monitor.yml
 ```
 `/data` must be unlocked first (`mount-data-drives`), the broker and its config live there.
+
+# Firewall
+The `firewall` role loads its own nftables table, `inet nasfw` (`/etc/nasfw.nft`, `nasfw.service`). It never runs
+`flush ruleset`, because Docker's iptables-nft tables share the same ruleset. One prerouting chain filters everything that
+arrives on a physical interface. It runs before Docker's DNAT, so host services and published container ports are
+handled by the same rules. Docker bridges and lo are not filtered. That includes WireGuard clients, which the container masquerades.
+
+Ports are listed in `roles/firewall/defaults/main.yml`. `firewall_public_ports` must match the router's port forwards.
+`firewall_lan_ports` are open to 192.168.174.0/24 only. Everything else is dropped and logged:
+```
+sudo journalctl -k -g nasfw-drop
+sudo nft list chain inet nasfw ingress
+```
+
+Run role with:
+```
+.venv/bin/ansible-playbook -i inventory/inventory.yml firewall.yml
+```
+Before a change is loaded, a `nasfw-revert` timer is armed. If ansible cannot open a new ssh connection afterwards, the
+timer runs `systemctl disable --now nasfw.service` after 5 minutes, which leaves the NAS without a firewall until the
+rules are fixed.

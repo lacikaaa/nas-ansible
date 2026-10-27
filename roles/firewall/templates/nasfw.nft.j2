@@ -1,0 +1,67 @@
+#!/usr/sbin/nft -f
+# {{ ansible_managed }}
+# Own table only, never "flush ruleset": Docker's iptables-nft tables live in the same ruleset.
+# Declaring the table first makes the delete safe when it does not exist yet; nft -f applies the file atomically.
+{% macro ports(entries, proto) -%}
+{{ entries | selectattr('proto', 'equalto', proto) | map(attribute='port') | map('string') | unique | join(', ') }}
+{%- endmacro %}
+table inet nasfw {}
+delete table inet nasfw
+
+table inet nasfw {
+	set lan4 {
+		type ipv4_addr
+		flags interval
+		elements = { {{ firewall_lan4 | join(', ') }} }
+	}
+
+	set lan6 {
+		type ipv6_addr
+		flags interval
+		elements = { {{ firewall_lan6 | join(', ') }} }
+	}
+
+	# Before Docker's DNAT (priority dstnat, -100): published ports still carry the port the client connected to,
+	# so one chain covers host services and containers. Conntrack (-200) has already run, ct state is set.
+	chain ingress {
+		type filter hook prerouting priority -150; policy accept;
+
+{% for iface in firewall_trusted_ifaces %}
+		iifname "{{ iface }}" accept
+{% endfor %}
+		ct state established,related accept
+		ct state invalid drop
+		meta l4proto { icmp, ipv6-icmp } accept
+		# DHCP lease renewal on the uplink
+		udp sport 67 udp dport 68 accept
+		ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept
+
+		# LAN discovery: mDNS, SSDP, Plex GDM, urbackup, transmission LPD. SSDP answers are unicast from port 1900
+		# and do not match the multicast query in conntrack.
+		ip saddr @lan4 fib daddr type { broadcast, multicast } accept
+		ip6 saddr @lan6 fib daddr type multicast accept
+		ip saddr @lan4 udp sport 1900 accept
+
+		# Public: {{ firewall_public_ports | map(attribute='name') | unique | join(', ') }}
+{% if ports(firewall_public_ports, 'tcp') %}
+		tcp dport { {{ ports(firewall_public_ports, 'tcp') }} } accept
+{% endif %}
+{% if ports(firewall_public_ports, 'udp') %}
+		udp dport { {{ ports(firewall_public_ports, 'udp') }} } accept
+{% endif %}
+
+		# LAN: {{ firewall_lan_ports | map(attribute='name') | unique | join(', ') }}
+{% for family in ['ip', 'ip6'] %}
+{% set lan = 'lan4' if family == 'ip' else 'lan6' %}
+{% if ports(firewall_lan_ports, 'tcp') %}
+		{{ family }} saddr @{{ lan }} tcp dport { {{ ports(firewall_lan_ports, 'tcp') }} } accept
+{% endif %}
+{% if ports(firewall_lan_ports, 'udp') %}
+		{{ family }} saddr @{{ lan }} udp dport { {{ ports(firewall_lan_ports, 'udp') }} } accept
+{% endif %}
+{% endfor %}
+
+		limit rate 10/minute burst 20 packets log prefix "nasfw-drop: " level info
+		counter drop
+	}
+}

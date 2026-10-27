@@ -1,0 +1,42 @@
+# Only traffic arriving on other interfaces (eth0, eth1) is filtered. Docker bridges carry container<->host traffic
+# (flood->transmission, swag->homeassistant) and the VPN clients (wireguard masquerades them), so they stay trusted.
+firewall_trusted_ifaces:
+  - lo
+  - docker0
+  - "br-*"
+  - "veth*"
+firewall_lan4:
+  - 192.168.174.0/24
+firewall_lan6:
+  - fe80::/10
+# Open to any source: must match the router's port forwards.
+firewall_public_ports:
+  - { port: 443, proto: tcp, name: swag }
+  - { port: 51820, proto: udp, name: wireguard }
+  - { port: 51413, proto: tcp, name: transmission peers }
+  - { port: 51413, proto: udp, name: transmission peers }
+# Open to firewall_lan4/firewall_lan6 only. Ranges as "first-last".
+firewall_lan_ports:
+  - { port: 22, proto: tcp, name: ssh }
+  - { port: 139, proto: tcp, name: samba }
+  - { port: 445, proto: tcp, name: samba }
+  - { port: 8123, proto: tcp, name: homeassistant }
+  - { port: 18555, proto: tcp, name: go2rtc }
+  - { port: 5353, proto: udp, name: mdns }
+  - { port: 9091, proto: tcp, name: transmission rpc }
+  - { port: 3000, proto: tcp, name: flood }
+  - { port: 6767, proto: tcp, name: bazarr }
+  - { port: 7878, proto: tcp, name: radarr }
+  - { port: 8989, proto: tcp, name: sonarr }
+  - { port: 9117, proto: tcp, name: jackett }
+  - { port: 8090, proto: tcp, name: gpb }
+  - { port: 32400, proto: tcp, name: plex }
+  - { port: 3005, proto: tcp, name: plex companion }
+  - { port: 8324, proto: tcp, name: plex roku }
+  - { port: 32469, proto: tcp, name: plex dlna }
+  - { port: 1900, proto: udp, name: plex dlna }
+  - { port: "32410-32414", proto: udp, name: plex gdm }
+  - { port: "55413-55415", proto: tcp, name: urbackup }
+  - { port: 35623, proto: udp, name: urbackup discovery }
+# The firewall is taken down this many seconds after a change unless ansible can open a new ssh connection.
+firewall_revert_seconds: 300

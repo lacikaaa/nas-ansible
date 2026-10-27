@@ -1,0 +1,69 @@
+- name: "Install nftables"
+  zypper:
+    name: nftables
+    state: present
+
+- name: "copy nasfw rules to host"
+  template:
+    src: nasfw.nft.j2
+    dest: /etc/nasfw.nft
+    owner: root
+    group: root
+    mode: 0644
+    validate: /usr/sbin/nft -c -f %s
+  register: nasfw_rules
+
+- name: "copy nasfw service to host"
+  template:
+    src: nasfw.service.j2
+    dest: /etc/systemd/system/nasfw.service
+    owner: root
+    group: root
+    mode: 0644
+  register: nasfw_unit
+
+- name: "Check nasfw service state"
+  command: systemctl is-active nasfw.service
+  register: nasfw_active
+  changed_when: false
+  failed_when: false
+
+# Lockout guard: a timer takes the firewall down (and keeps it off at boot) unless ansible can still open a new ssh
+# connection after the change and stops the timer.
+- name: "Load firewall with revert timer armed"
+  when: nasfw_rules.changed or nasfw_unit.changed or nasfw_active.stdout != 'active'
+  block:
+    - name: "Clear a leftover revert timer"
+      shell: systemctl stop nasfw-revert.timer nasfw-revert.service; systemctl reset-failed nasfw-revert.timer nasfw-revert.service
+      changed_when: false
+      failed_when: false
+
+    - name: "Arm revert timer ({{ firewall_revert_seconds }}s)"
+      command: >-
+        systemd-run --unit=nasfw-revert --on-active={{ firewall_revert_seconds }}
+        /usr/bin/systemctl disable --now nasfw.service
+
+    - name: "Load nasfw rules"
+      systemd:
+        name: nasfw.service
+        daemon_reload: yes
+        state: reloaded
+
+# Outside the block: meta tasks ignore when. Dropping the persistent ssh connection is harmless when nothing changed.
+- name: "Drop the ssh connection so the next task opens a new one through the firewall"
+  meta: reset_connection
+
+- name: "Confirm ssh still works and disarm revert timer"
+  when: nasfw_rules.changed or nasfw_unit.changed or nasfw_active.stdout != 'active'
+  block:
+    - name: "Open a new ssh connection"
+      wait_for_connection:
+        timeout: 60
+
+    - name: "Disarm revert timer"
+      command: systemctl stop nasfw-revert.timer
+
+- name: "Enable nasfw service at boot"
+  systemd:
+    name: nasfw.service
+    enabled: yes
