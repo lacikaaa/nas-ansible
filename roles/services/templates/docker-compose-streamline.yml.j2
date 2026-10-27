@@ -74,6 +74,23 @@ services:
     networks:
       - streamline_net
 
+  flood:
+    image: jesec/flood:latest
+    container_name: flood
+    restart: unless-stopped
+    user: "506:1000"
+    volumes:
+      - /data/flood:/config
+      - {{ transmission.download_dir }}:{{ transmission.download_dir }}:ro
+    ports:
+      - "3000:3000"
+    environment:
+      - FLOOD_OPTION_RUNDIR=/config
+      - FLOOD_OPTION_ALLOWEDPATH={{ transmission.download_dir }}
+      - TZ=Europe/Budapest
+    networks:
+      - streamline_net
+
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: flaresolverr

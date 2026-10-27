@@ -56,7 +56,7 @@ transmission: {
   "rpc_port": 9091,
   "rpc_url": "/transmission/",
   "rpc_username": "transmissionUser",
-  "rpc_whitelist": "127.0.0.1,192.168.*.*",
+  "rpc_whitelist": "127.0.0.1,172.17.*.*,172.19.*.*,172.18.*.*,172.21.*.*,192.168.*.*",
   "rpc_whitelist_enabled": "true",
   "download_dir": "/data/movies",
   "cache_size_mb": 8,

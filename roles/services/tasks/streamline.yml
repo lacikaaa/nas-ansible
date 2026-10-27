@@ -20,6 +20,23 @@
     group: "{{ samba_group }}"
     mode: "2770"
 
+- name: Ensure flood user exists
+  user:
+    name: flood
+    uid: 506
+    group: "{{ samba_group }}"
+    home: /data/flood
+    create_home: no
+    shell: /usr/sbin/nologin
+
+- name: Ensure flood config directory exists
+  file:
+    path: /data/flood
+    state: directory
+    owner: flood
+    group: "{{ samba_group }}"
+    mode: "2770"
+
 - name: "copy Dockerfile-radarr to host"
   copy: 
     src: /{{ role_path }}/files/Dockerfile-radarr
