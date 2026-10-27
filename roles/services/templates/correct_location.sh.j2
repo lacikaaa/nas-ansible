@@ -1,0 +1,86 @@
+#!/bin/bash
+# {{ ansible_managed }}
+#
+# {{ item.app }} Connect > Custom Script, run after an import.
+# Asks Transmission (host daemon) to move the imported torrent's data from the
+# download dir into {{ item.dest }}, which is hidden from Plex by .plexignore,
+# so seeding continues from there. The library file itself is already a copy
+# (a btrfs reflink, since /downloads and the library are separate bind mounts).
+#
+# Triggers:
+#   sonarr: On Import Complete only (fires once per download, after every file
+#           is imported; On File Import fires mid-import, per episode)
+#   radarr: On File Import + On File Upgrade
+
+APP="{{ item.app }}"
+DEST_ROOT="{{ item.dest }}"
+LOG="$(dirname "$0")/${APP}transmissionfixer.log"
+
+export TR_AUTH={{ (transmission.rpc_username ~ ':' ~ transmission_rpc_password) | quote }}
+REMOTE=(transmission-remote "{{ ansible_ssh_host }}:{{ transmission.rpc_port }}" -ne)
+
+log() {
+    printf '%s | %-5s | %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" >> "$LOG"
+}
+
+# Keep the log at most 1000 lines
+if [[ -f $LOG ]] && (( $(wc -l < "$LOG") > 1000 )); then
+    TMP="$(mktemp "${LOG}.XXXXXX")" && tail -n 1000 "$LOG" > "$TMP" && mv "$TMP" "$LOG"
+fi
+
+# Sonarr/Radarr pass their variables lowercased (e.g. sonarr_download_id)
+event_var="${APP}_eventtype"
+id_var="${APP}_download_id"
+EVENT="${!event_var}"
+TORRENT_ID="${!id_var}"
+
+case "$EVENT" in
+    Test)
+        log INFO "Test event, transmission-remote: $("${REMOTE[@]}" --session-info >/dev/null 2>&1 && echo ok || echo FAILED)"
+        exit 0
+        ;;
+    Download) ;;
+    *) exit 0 ;;
+esac
+
+if [[ $APP == sonarr ]]; then
+    TITLE="${sonarr_series_title}"
+    # One folder per series, quotes stripped as before; "/" would nest folders
+    FOLDER="${TITLE//\'/}"
+    FOLDER="${FOLDER//\//-}"
+    if [[ -z ${FOLDER//[. ]/} ]]; then
+        log WARN "Unusable series title '${TITLE}', not moving"
+        exit 0
+    fi
+    DEST="${DEST_ROOT}/${FOLDER}"
+else
+    TITLE="${radarr_movie_title}"
+    DEST="${DEST_ROOT}"
+fi
+
+log INFO "Processing import of: ${TITLE} | Torrent ID: ${TORRENT_ID:-<none>}"
+
+if [[ -z $TORRENT_ID ]]; then
+    log INFO "No download id (manual import?), nothing to move"
+    exit 0
+fi
+
+if ! INFO=$("${REMOTE[@]}" -t "$TORRENT_ID" -i 2>&1); then
+    log ERROR "transmission-remote -i failed: ${INFO}"
+    exit 1
+fi
+CURRENT="$(sed -n 's/^ *Location: //p' <<< "$INFO")"
+
+if [[ -z $CURRENT ]]; then
+    log WARN "Torrent ${TORRENT_ID} not found in Transmission"
+elif [[ ${CURRENT%/} == "${DEST%/}" ]]; then
+    log INFO "Already in ${DEST}"
+else
+    # Transmission moves in the background; failures show up in its own log
+    if OUT=$("${REMOTE[@]}" -t "$TORRENT_ID" --move "$DEST" 2>&1); then
+        log INFO "Move requested from ${CURRENT} to ${DEST}: ${OUT}"
+    else
+        log ERROR "Move request from ${CURRENT} to ${DEST} failed: ${OUT}"
+        exit 1
+    fi
+fi

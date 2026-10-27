@@ -1,0 +1,23 @@
+- name: "Load transmission password"
+  include_vars:
+    file: transmission_pw.yml
+
+- name: "copy sonarr/radarr correct_location scripts"
+  template:
+    src: correct_location.sh.j2
+    dest: "{{ item.path }}"
+    owner: "{{ item.uid }}"
+    group: "{{ samba_group }}"
+    mode: "0700"
+  diff: false  # rendered script holds the transmission password
+  loop:
+    - app: sonarr
+      uid: 503
+      path: /data/sonarr/correct_series_location.sh
+      dest: "{{ transmission.download_dir }}/_series/sonarr"
+    - app: radarr
+      uid: 504
+      path: /data/radarr/correct_location.sh
+      dest: "{{ transmission.download_dir }}/_filmz/radarr"
+  loop_control:
+    label: "{{ item.path }}"

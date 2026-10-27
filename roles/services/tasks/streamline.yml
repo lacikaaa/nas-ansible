@@ -30,6 +30,8 @@
     src: /{{ role_path }}/files/Dockerfile-sonarr
     dest: /data/streamline/Dockerfile-sonarr
 
+- import_tasks: correct_location.yml
+
 - name: "copy streamline compose file"
   template:
     src: docker-compose-streamline.yml.j2
