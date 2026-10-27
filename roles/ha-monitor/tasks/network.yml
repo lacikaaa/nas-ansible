@@ -1,0 +1,9 @@
+# Also run by the upgrade role: compose projects that declare the network external fail to start without it.
+- name: "Create the shared mqtt network"
+  community.docker.docker_network:
+    name: "{{ mqtt_network }}"
+    driver: bridge
+    internal: true
+    ipam_config:
+      - subnet: "{{ mqtt_network_subnet }}"
+        gateway: "{{ mqtt_network_gateway }}"

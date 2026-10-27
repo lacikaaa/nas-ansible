@@ -1,5 +1,19 @@
 mqtt_user: nas-agent
 mosquitto_image: eclipse-mosquitto:2
+# Shared Docker network for containers that talk to the broker by name (tcp://mosquitto:1883).
+# Internal: it carries MQTT only, each container keeps its own network for everything else.
+mqtt_network: mqtt
+# Fixed, so it never moves. Docker's auto-assigned networks here are 172.17-172.23 and skip a range in use.
+mqtt_network_subnet: 172.30.0.0/24
+mqtt_network_gateway: 172.30.0.1
+# Broker users, one per client. Passwords come from vars/mqtt_password.yml, the topics they may use are in acl.j2.
+mqtt_clients:
+  - user: "{{ mqtt_user }}"
+    password: "{{ mqtt_password }}"
+  - user: homeassistant
+    password: "{{ mqtt_homeassistant_password }}"
+  - user: gpb
+    password: "{{ mqtt_gpb_password }}"
 ha_monitor_units:
   - smb
   - transmission-daemon

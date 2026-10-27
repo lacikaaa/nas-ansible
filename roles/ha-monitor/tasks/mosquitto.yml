@@ -20,6 +20,17 @@
     mode: 0644
   register: mosquitto_conf
 
+- name: "copy mosquitto acl"
+  template:
+    src: acl.j2
+    dest: /data/mosquitto/config/acl
+    owner: "1883"
+    group: "1883"
+    mode: 0600
+  register: mosquitto_acl
+
+- import_tasks: network.yml
+
 - name: "copy mosquitto compose file"
   template:
     src: docker-compose-mosquitto.yml.j2
@@ -43,27 +54,52 @@
   when: mosquitto_passwd_hash_file.stat.exists
   no_log: true
 
+# mosquitto_passwd -U hashes a plain user:password file in place, so the passwords never reach a command line.
+# passwd.sha256 holds a hash of that plain text, to tell when a user or password changed.
 - name: "Create mosquitto password file"
-  command: >-
-    docker run --rm -v /data/mosquitto/config:/mosquitto/config
-    {{ mosquitto_image }}
-    mosquitto_passwd -b -c /mosquitto/config/passwd {{ mqtt_user | quote }} {{ mqtt_password | quote }}
   when: >-
     not mosquitto_passwd_file.stat.exists
     or not mosquitto_passwd_hash_file.stat.exists
-    or (mosquitto_passwd_hash.content | b64decode | trim) != (mqtt_password | hash('sha256'))
-  register: mosquitto_passwd_created
-  no_log: true
+    or (mosquitto_passwd_hash.content | b64decode | trim) != (mosquitto_passwd_plain | hash('sha256'))
+  vars:
+    mosquitto_passwd_plain: |
+      {% for c in mqtt_clients %}
+      {{ c.user }}:{{ c.password }}
+      {% endfor %}
+  block:
+    - name: "Write plain mosquitto password file"
+      copy:
+        content: "{{ mosquitto_passwd_plain }}"
+        dest: /data/mosquitto/config/passwd
+        owner: "1883"
+        group: "1883"
+        mode: 0600
+      no_log: true
 
-- name: "Store mosquitto password hash"
-  copy:
-    content: "{{ mqtt_password | hash('sha256') }}\n"
-    dest: /data/mosquitto/config/passwd.sha256
-    owner: root
-    group: root
-    mode: 0600
-  when: mosquitto_passwd_created is changed
-  no_log: true
+    - name: "Hash mosquitto password file"
+      command: >-
+        docker run --rm -v /data/mosquitto/config:/mosquitto/config
+        {{ mosquitto_image }}
+        mosquitto_passwd -U /mosquitto/config/passwd
+      register: mosquitto_passwd_created
+
+    - name: "Store mosquitto password hash"
+      copy:
+        content: "{{ mosquitto_passwd_plain | hash('sha256') }}\n"
+        dest: /data/mosquitto/config/passwd.sha256
+        owner: root
+        group: root
+        mode: 0600
+      no_log: true
+  rescue:
+    - name: "Remove the unhashed mosquitto password file"
+      file:
+        path: /data/mosquitto/config/passwd
+        state: absent
+
+    - name: "Fail after removing the unhashed password file"
+      fail:
+        msg: "Hashing /data/mosquitto/config/passwd failed, the plain file was removed. Re-run the playbook."
 
 - name: "Fix mosquitto password file permissions"
   file:
@@ -72,8 +108,26 @@
     group: "1883"
     mode: 0600
 
+# The marker keeps a pending recreate across a run that fails before the broker is started.
+- name: "Mark mosquitto for recreate"
+  copy:
+    content: ""
+    dest: /data/mosquitto/.recreate
+    mode: 0600
+  when: mosquitto_conf is changed or mosquitto_acl is changed or mosquitto_compose is changed or mosquitto_passwd_created is changed
+
+- name: "Check mosquitto recreate marker"
+  stat:
+    path: /data/mosquitto/.recreate
+  register: mosquitto_recreate
+
 - name: "start mosquitto"
   community.docker.docker_compose_v2:
     project_src: /data/mosquitto
     pull: "always"
-    recreate: "{{ 'always' if (mosquitto_conf is changed or mosquitto_compose is changed or mosquitto_passwd_created is changed) else 'auto' }}"
+    recreate: "{{ 'always' if mosquitto_recreate.stat.exists else 'auto' }}"
+
+- name: "Remove mosquitto recreate marker"
+  file:
+    path: /data/mosquitto/.recreate
+    state: absent

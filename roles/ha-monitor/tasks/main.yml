@@ -26,12 +26,29 @@
     file: mqtt_password.yml
   no_log: true
 
-- name: "Fail when mqtt password is a placeholder or too short"
+- name: "Fail when an mqtt password is missing"
   assert:
     that:
-      - mqtt_password != 'CHANGE_ME'
-      - mqtt_password | string | length >= 12
-    fail_msg: "mqtt_password in roles/ha-monitor/vars/mqtt_password.yml must be changed from CHANGE_ME and be at least 12 characters long"
+      - mqtt_password is defined
+      - mqtt_homeassistant_password is defined
+      - mqtt_gpb_password is defined
+    fail_msg: "roles/ha-monitor/vars/mqtt_password.yml needs mqtt_password, mqtt_homeassistant_password and mqtt_gpb_password, see mqtt_password.yml.example"
+
+# No loop here: a failed loop item is printed whole, password included.
+- name: "Fail when an mqtt password is a placeholder, too short or more than one line"
+  assert:
+    that: weak_mqtt_users | trim == ''
+    fail_msg: "Set a one-line password of at least 12 characters (not CHANGE_ME) for mqtt user(s) {{ weak_mqtt_users | trim }} in roles/ha-monitor/vars/mqtt_password.yml"
+    quiet: true
+  vars:
+    weak_mqtt_users: >-
+      {% for c in mqtt_clients if c.password == 'CHANGE_ME' or c.password | string | length < 12 or '\n' in c.password | string or '\r' in c.password | string %}{{ c.user }} {% endfor %}
+
+- name: "Fail when mqtt users share a password"
+  assert:
+    that: mqtt_clients | map(attribute='password') | unique | length == mqtt_clients | length
+    fail_msg: "Each mqtt user needs its own password in roles/ha-monitor/vars/mqtt_password.yml"
+    quiet: true
 
 - import_tasks: mosquitto.yml
 - import_tasks: agent.yml

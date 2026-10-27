@@ -4,8 +4,12 @@ services:
     container_name: mosquitto
     # Not restarted by dockerd at boot: /data is unlocked by hand, started by the upgrade role or `docker compose up -d`.
     restart: "no"
+    # The host port is for the agent and Home Assistant (host network), the mqtt network for other containers.
     ports:
       - "127.0.0.1:1883:1883"
+    networks:
+      - default
+      - {{ mqtt_network }}
     # Long syntax with create_host_path: false, so a start before /data is mounted fails instead of
     # creating empty dirs under the bare mountpoint.
     volumes:
@@ -24,3 +28,8 @@ services:
         target: /mosquitto/log
         bind:
           create_host_path: false
+
+networks:
+  {{ mqtt_network }}:
+    # Created by the ha-monitor role, so it outlives `docker compose down` here and in the client projects.
+    external: true

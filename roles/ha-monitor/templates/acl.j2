@@ -1,0 +1,14 @@
+# Topics each broker user may use. A user without a section here gets no access,
+# so a new entry in mqtt_clients (defaults/main.yml) needs one too.
+
+user {{ mqtt_user }}
+topic write homeassistant/device/nas_agent/config
+topic write nas/state
+
+user gpb
+topic readwrite gpb/#
+topic write homeassistant/+/gpb/#
+topic read homeassistant/status
+
+user homeassistant
+topic readwrite #

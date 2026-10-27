@@ -35,7 +35,17 @@ Change the passwords under: `roles/nut/vars/passwords.yml`
 The `ha-monitor` role installs a Mosquitto broker (compose project in `/data/mosquitto`, listening on 127.0.0.1:1883 only)
 and `nas-ha-agent`, a systemd timer (every minute) that publishes NAS status to Home Assistant over MQTT.
 
-Create the password file from the example and set a password:
+Every broker client has its own user: `nas-agent`, `homeassistant` and `gpb`. `templates/acl.j2` lists the topics
+each one may use. Containers reach the broker as `mosquitto:1883` over the shared Docker network `mqtt`
+(172.30.0.0/24, internal, created by the role). To join a compose project to it, add `networks: [default, mqtt]` to the
+service and this top-level block:
+```
+networks:
+  mqtt:
+    external: true
+```
+
+Create the password file from the example and set one password per user:
 ```
 cp roles/ha-monitor/vars/mqtt_password.yml.example roles/ha-monitor/vars/mqtt_password.yml
 ```

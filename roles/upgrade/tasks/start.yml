@@ -49,6 +49,12 @@
     path: /data/mosquitto/docker-compose.yml
   register: mosquitto_compose_file
 
+- name: "ensure the shared mqtt network"
+  include_role:
+    name: ha-monitor
+    tasks_from: network.yml
+  when: mosquitto_compose_file.stat.exists
+
 - name: "start mosquitto"
   community.docker.docker_compose_v2:
     project_src: /data/mosquitto
