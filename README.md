@@ -76,3 +76,19 @@ Run role with:
 Before a change is loaded, a `nasfw-revert` timer is armed. If ansible cannot open a new ssh connection afterwards, the
 timer runs `systemctl disable --now nasfw.service` after 5 minutes, which leaves the NAS without a firewall until the
 rules are fixed.
+
+# CPU history (sysstat)
+The `sysstat` role installs sysstat. `sysstat-collect.timer` samples system-wide CPU, load, memory, disk and network every
+10 minutes into `/var/log/sa`, kept for `sysstat_history_days` (28). Read it with:
+```
+sar -u -f /var/log/sa/saDD -s 02:00:00 -e 06:00:00   # CPU; -q load, -r memory, -d disks
+```
+sar has no per-process data. For that, `pidstat-night.timer` runs `pidstat -u -h -l` every night, by default from 01:00
+to 07:00 with 60 s samples (`pidstat_night_*` in `roles/sysstat/defaults/main.yml`), into
+`/var/log/pidstat/night-YYYYMMDD.log`. Logs older than 14 days are removed by `systemd-tmpfiles-clean`. Set
+`pidstat_night_enabled: false` to remove the timer again.
+
+Run role with:
+```
+.venv/bin/ansible-playbook -i inventory/inventory.yml sysstat.yml
+```

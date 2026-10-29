@@ -1,0 +1,8 @@
+[Unit]
+Description=Start the overnight pidstat log at {{ pidstat_night_start }}
+
+[Timer]
+OnCalendar=*-*-* {{ pidstat_night_start }}:00
+
+[Install]
+WantedBy=timers.target

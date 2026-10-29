@@ -1,0 +1,89 @@
+- name: "install sysstat"
+  zypper:
+    name: sysstat
+    state: latest
+
+- name: "set sar history"
+  lineinfile:
+    path: /etc/sysstat/sysstat
+    regexp: '^HISTORY='
+    line: "HISTORY={{ sysstat_history_days }}"
+
+# sysstat.service writes the boot marker, the timers collect every 10 minutes and summarise daily
+- name: "Enable and start sysstat collection"
+  systemd:
+    name: "{{ item }}"
+    enabled: yes
+    state: started
+  loop:
+    - sysstat.service
+    - sysstat-collect.timer
+    - sysstat-summary.timer
+
+- name: "copy pidstat tmpfiles config to host"
+  template:
+    src: pidstat.tmpfiles.j2
+    dest: /etc/tmpfiles.d/pidstat.conf
+    owner: root
+    group: root
+    mode: 0644
+  when: pidstat_night_enabled
+
+- name: "create pidstat log directory"
+  command: systemd-tmpfiles --create /etc/tmpfiles.d/pidstat.conf
+  changed_when: false
+  when: pidstat_night_enabled
+
+- name: "copy pidstat-night service to host"
+  template:
+    src: pidstat-night.service.j2
+    dest: /etc/systemd/system/pidstat-night.service
+    owner: root
+    group: root
+    mode: 0644
+  when: pidstat_night_enabled
+
+- name: "copy pidstat-night timer to host"
+  template:
+    src: pidstat-night.timer.j2
+    dest: /etc/systemd/system/pidstat-night.timer
+    owner: root
+    group: root
+    mode: 0644
+  when: pidstat_night_enabled
+
+- name: "Enable and start pidstat-night timer"
+  systemd:
+    name: pidstat-night.timer
+    daemon_reload: yes
+    enabled: yes
+    state: started
+  when: pidstat_night_enabled
+
+- name: "Stop and disable pidstat-night"
+  systemd:
+    name: "{{ item }}"
+    enabled: no
+    state: stopped
+  loop:
+    - pidstat-night.timer
+    - pidstat-night.service
+  register: pidstat_night_stop
+  failed_when: pidstat_night_stop is failed and 'Could not find' not in (pidstat_night_stop.msg | default(''))
+  when: not pidstat_night_enabled
+
+# the logs in /var/log/pidstat are left in place
+- name: "remove pidstat-night units"
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/pidstat-night.service
+    - /etc/systemd/system/pidstat-night.timer
+    - /etc/tmpfiles.d/pidstat.conf
+  when: not pidstat_night_enabled
+
+- name: "Reload systemd after removing pidstat-night"
+  systemd:
+    daemon_reload: yes
+  when: not pidstat_night_enabled

@@ -1,0 +1,10 @@
+# days of sar data kept in /var/log/sa
+sysstat_history_days: 28
+
+# nightly per-process CPU log (pidstat), to find what loads the CPU at night
+pidstat_night_enabled: true
+pidstat_night_start: "01:00"
+# 60 s samples, 360 of them: 01:00-07:00
+pidstat_night_interval: 60
+pidstat_night_count: 360
+pidstat_night_keep_days: 14

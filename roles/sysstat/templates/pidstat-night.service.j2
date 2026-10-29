@@ -1,0 +1,8 @@
+[Unit]
+Description=Log per-process CPU usage overnight (pidstat)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'exec /usr/bin/pidstat -u -h -l {{ pidstat_night_interval }} {{ pidstat_night_count }} >> /var/log/pidstat/night-$$(date +%%Y%%m%%d).log'
+Nice=10
+TimeoutStartSec=infinity
