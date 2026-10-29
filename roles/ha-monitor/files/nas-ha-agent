@@ -411,7 +411,15 @@ def parse_docker_inspect(items):
 
 
 def container_is_up(info):
-    return info["status"] == "running" and info["health"] != "unhealthy"
+    """Running or not. A failing healthcheck is reported apart, as the health attribute."""
+    return info["status"] == "running"
+
+
+def container_attributes(info):
+    attrs = {"status": info["status"], "image": info["image"]}
+    if info["health"] != "none":  # only containers that have a healthcheck
+        attrs["health"] = info["health"]
+    return attrs
 
 
 def parse_samba_sessions(text):
@@ -586,8 +594,7 @@ def collect_containers():
     for sl, info in infos.items():
         key = "container_%s" % sl
         state[key] = on_off(container_is_up(info))
-        state["containers_attr"][sl] = {"status": info["status"], "health": info["health"],
-                                        "image": info["image"]}
+        state["containers_attr"][sl] = container_attributes(info)
         comps[key] = binary_sensor(
             key, "Container %s" % info["name"], "running",
             json_attributes_topic=STATE_TOPIC,

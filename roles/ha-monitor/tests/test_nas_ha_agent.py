@@ -188,8 +188,11 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(res["my_sick_app"]["name"], "my-sick.app")
         self.assertTrue(agent.container_is_up(res["plex"]))
         self.assertTrue(agent.container_is_up(res["swag"]))
-        self.assertFalse(agent.container_is_up(res["my_sick_app"]))
+        # running but unhealthy: still running, the health travels as an attribute
+        self.assertTrue(agent.container_is_up(res["my_sick_app"]))
         self.assertFalse(agent.container_is_up(res["stopped_one"]))
+        self.assertEqual(agent.container_attributes(res["my_sick_app"])["health"], "unhealthy")
+        self.assertNotIn("health", agent.container_attributes(res["swag"]))
 
     def test_docker_slug_collision_and_odd_slugs(self):
         items = [{"Name": "/a-b", "State": {"Status": "running"}, "Config": {"Image": "x"}},
@@ -347,7 +350,8 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(s["service_smb"], "ON")
         self.assertEqual(s["service_transmission_daemon"], "OFF")
         self.assertEqual(s["container_plex"], "ON")
-        self.assertEqual(s["container_my_sick_app"], "OFF")
+        self.assertEqual(s["container_my_sick_app"], "ON")
+        self.assertEqual(s["containers_attr"]["my_sick_app"]["health"], "unhealthy")
         self.assertEqual(s["containers_total"], 4)
         self.assertEqual(s["containers_running"], 3)
         self.assertEqual(s["containers_attr"]["plex"]["health"], "healthy")
