@@ -30,6 +30,12 @@ services:
           create_host_path: false
 
 networks:
+  # The mqtt network is internal, so the host port needs this one. Fixed subnet: an auto-assigned one
+  # takes whichever 172.x range is free first and can steal one a later project hard-codes.
+  default:
+    ipam:
+      config:
+        - subnet: "{{ mosquitto_network_subnet }}"
   {{ mqtt_network }}:
     # Created by the ha-monitor role, so it outlives `docker compose down` here and in the client projects.
     external: true

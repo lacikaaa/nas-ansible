@@ -66,6 +66,19 @@
     project_src: /data/homeassistant
     pull: "always"
 
+# The gpb compose file is upstream's and leaves its default network auto-assigned; compose merges this
+# override in, so the network gets a fixed subnet without editing that file.
+- name: "pin the gpb network subnet"
+  copy:
+    dest: /data/gpb/docker-compose.override.yml
+    content: |
+      networks:
+        default:
+          ipam:
+            config:
+              - subnet: "172.23.0.0/16"
+    mode: 0664
+
 - name: "start gpb"
   community.docker.docker_compose_v2:
     project_src: /data/gpb

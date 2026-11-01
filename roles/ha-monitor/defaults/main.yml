@@ -3,9 +3,12 @@ mosquitto_image: eclipse-mosquitto:2
 # Shared Docker network for containers that talk to the broker by name (tcp://mosquitto:1883).
 # Internal: it carries MQTT only, each container keeps its own network for everything else.
 mqtt_network: mqtt
-# Fixed, so it never moves. Docker's auto-assigned networks here are 172.17-172.23 and skip a range in use.
+# Fixed, so it never moves. Every network on the NAS has a fixed subnet: docker0 172.17, wireguard 172.18,
+# plex 172.19, homeassistant 172.20, streamline 172.21, mosquitto 172.22, gpb 172.23, mqtt 172.30.0.0/24.
 mqtt_network_subnet: 172.30.0.0/24
 mqtt_network_gateway: 172.30.0.1
+# Mosquitto's own (default) network, for the host port.
+mosquitto_network_subnet: 172.22.0.0/16
 # Broker users, one per client. Passwords come from vars/mqtt_password.yml, the topics they may use are in acl.j2.
 mqtt_clients:
   - user: "{{ mqtt_user }}"
