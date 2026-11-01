@@ -1,0 +1,84 @@
+---
+# One-off: move / and /data from btrfs space_cache v1 to v2 (free space tree).
+# The kernel only builds the tree on a fresh read-write mount, so this reboots the NAS (no package update):
+# root converts at boot from the fstab option, /data when mount-data-drives mounts it with -o space_cache=v2.
+# Once built, the tree is a filesystem feature and stays without the mount option.
+- hosts: all
+  vars:
+    # compat_ro bits 0x1 FREE_SPACE_TREE and 0x2 FREE_SPACE_TREE_VALID both set
+    fst_regex: 'compat_ro_flags\s+0x[0-9a-f]*[37bf]\b'
+  tasks:
+    - name: "check /data is mounted"
+      command: mountpoint -q /data
+      changed_when: false
+
+    - name: "check no scrub or balance is running"
+      # balance status exits 1 while a balance runs, 2 on error
+      shell: "btrfs scrub status {{ item }} && btrfs balance status {{ item }}"
+      loop: [/, /data]
+      register: btrfs_busy
+      changed_when: false
+      failed_when: btrfs_busy.rc not in [0, 1] or btrfs_busy.stdout is search('Status:\s+running|is running|is paused')
+
+    - name: "read free space tree flags"
+      shell: "btrfs inspect-internal dump-super $(findmnt -nvo SOURCE -M {{ item }})"
+      loop: [/, /data]
+      register: fst_before
+      changed_when: false
+
+    - name: "copy mount data drives script to host"
+      include_role:
+        name: services
+        tasks_from: mount-script.yml
+
+    - name: "mount / with space_cache=v2"
+      lineinfile:
+        path: /etc/fstab
+        regexp: '^(\S+\s+/\s+btrfs\s+)((?:(?!space_cache)\S)+)(\s.*)$'
+        line: '\1\2,space_cache=v2\3'
+        backrefs: yes
+        backup: yes
+
+    - name: "list filesystems still on v1"
+      set_fact:
+        fst_missing: "{{ fst_before.results | rejectattr('stdout', 'search', fst_regex) | map(attribute='item') | list }}"
+
+    - name: "Stop, reboot and start services"
+      when: fst_missing | length > 0
+      block:
+        - include_role:
+            name: upgrade
+            tasks_from: stop.yml
+        - include_role:
+            name: upgrade
+            tasks_from: restart.yml
+        - include_role:
+            name: upgrade
+            tasks_from: start.yml
+
+    - name: "read free space tree flags after reboot"
+      shell: "btrfs inspect-internal dump-super $(findmnt -nvo SOURCE -M {{ item }})"
+      loop: [/, /data]
+      register: fst_after
+      changed_when: false
+
+    - name: "show kernel messages about the conversion"
+      shell: "dmesg | grep -iE 'free.space.tree|space.cache'"
+      register: fst_dmesg
+      changed_when: false
+      failed_when: false
+
+    - debug:
+        var: fst_dmesg.stdout_lines
+
+    - name: "check both filesystems use the free space tree"
+      assert:
+        that: item.stdout is search(fst_regex)
+        fail_msg: >-
+          {{ item.item }} is still on space_cache v1. For /, boot once with rootflags=space_cache=v2
+          (add it to GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub, grub2-mkconfig -o /boot/grub2/grub.cfg,
+          reboot, then remove it again).
+        quiet: true
+      loop: "{{ fst_after.results }}"
+      loop_control:
+        label: "{{ item.item }}"

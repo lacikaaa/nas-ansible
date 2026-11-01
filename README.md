@@ -92,3 +92,17 @@ Run role with:
 ```
 .venv/bin/ansible-playbook -i inventory/inventory.yml sysstat.yml
 ```
+
+# btrfs space cache v2
+`btrfs-space-cache-v2.yml` is a one-off that moves `/` and `/data` from the deprecated space cache v1 to v2 (free space
+tree). The kernel builds the tree only on a fresh read-write mount, so the playbook reboots the NAS, with no package update.
+It adds `space_cache=v2` to the `/` line in `/etc/fstab`, and `mount-data-drives` mounts `/data` with the same option.
+After the reboot it checks `compat_ro_flags` in both superblocks. Wait for a running scrub or balance to finish first;
+the playbook stops if one is running. The first `/data` mount takes longer while the tree is built. Don't interrupt it.
+```
+.venv/bin/ansible-playbook -i inventory/inventory.yml btrfs-space-cache-v2.yml
+```
+Once the tree exists it is a filesystem feature and is used without the mount option. To undo it, first remove
+`space_cache=v2` from the `/` line in `/etc/fstab` and from `mount-data-drives.j2`, otherwise the next mount builds the tree
+again. Then run `btrfs check --clear-space-cache v2 <device>` on the unmounted filesystem: for `/data` before
+`mount-data-drives` runs, for `/` from rescue media. Mount it once with `space_cache=v1`.

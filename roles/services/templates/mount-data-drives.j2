@@ -10,7 +10,7 @@ echo "Open encrypted disk: {{ item }}"
 {% endfor %}
 
 echo "Mount /data"
-btrfs filesystem show /data ; [[ $? == 0 ]] || { mkdir -p /data; mount /dev/mapper/{{ disks_to_encrypt.0 | regex_replace('/dev/') }} /data; }
+btrfs filesystem show /data ; [[ $? == 0 ]] || { mkdir -p /data; mount -o space_cache=v2 /dev/mapper/{{ disks_to_encrypt.0 | regex_replace('/dev/') }} /data; }
 
 for vol in `btrfs subvolume list /data | cut -f9 -d" "`; do
     echo "Mount subvolume $vol"
