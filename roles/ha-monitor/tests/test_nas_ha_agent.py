@@ -153,6 +153,17 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(agent.parse_btrfs_scrub(fixture("btrfs_scrub_errors.txt"))[1], 8)
         self.assertEqual(agent.parse_btrfs_scrub(fixture("btrfs_scrub_never.txt")), (None, 0))
 
+    def test_btrfs_scrub_progress(self):
+        run = agent.parse_btrfs_scrub_progress(fixture("btrfs_scrub_running.txt"))
+        self.assertEqual(run["status"], "running")
+        self.assertEqual(run["progress"], 24.08)
+        self.assertTrue(run["eta"].startswith("2026-11-01T08:45:18"))
+        self.assertEqual(agent.parse_btrfs_scrub(fixture("btrfs_scrub_running.txt"))[1], 0)
+        done = agent.parse_btrfs_scrub_progress(fixture("btrfs_scrub_status.txt"))
+        self.assertEqual(done, {"status": "finished", "progress": None, "eta": None})
+        never = agent.parse_btrfs_scrub_progress(fixture("btrfs_scrub_never.txt"))
+        self.assertIsNone(never["status"])
+
     def test_lsblk(self):
         self.assertEqual(agent.parse_lsblk_disks(fixture("lsblk.txt")), ["sda", "sdb", "sdc"])
 
@@ -346,6 +357,8 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(s["btrfs_data_errors"], 7)
         self.assertEqual(s["btrfs_system_errors"], 7)
         self.assertIn("btrfs_data_last_scrub", s)
+        self.assertEqual(s["btrfs_data_scrub_status"], "finished")
+        self.assertEqual(s["btrfs_data_scrub_attr"], {"progress": None, "eta": None})
         self.assertNotIn("btrfs_system_last_scrub", s)
         self.assertEqual(s["service_smb"], "ON")
         self.assertEqual(s["service_transmission_daemon"], "OFF")
@@ -460,6 +473,10 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(c["nas_data_free"]["device_class"], "data_size")
         self.assertEqual(c["nas_data_free"]["unit_of_measurement"], "GiB")
         self.assertEqual(c["nas_btrfs_data_last_scrub"]["device_class"], "timestamp")
+        self.assertEqual(c["nas_btrfs_data_scrub_status"]["json_attributes_template"],
+                         "{{ value_json['btrfs_data_scrub_attr'] | tojson }}")
+        self.assertEqual(c["nas_btrfs_data_scrub_status"]["default_entity_id"],
+                         "sensor.nas_btrfs_data_scrub_status")
         self.assertEqual(c["nas_disk_sda_smart"]["device_class"], "problem")
         self.assertEqual(c["nas_disk_sda_temperature"]["device_class"], "temperature")
         self.assertEqual(c["nas_disk_sda_power_on_hours"]["entity_category"], "diagnostic")

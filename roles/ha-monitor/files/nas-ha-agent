@@ -337,6 +337,31 @@ def parse_btrfs_scrub(text):
     return when, errors
 
 
+def parse_btrfs_scrub_progress(text):
+    """Return {"status", "progress", "eta"} from `btrfs scrub status`: status is the word
+    after "Status:" (running, finished, aborted, ...) or None when never scrubbed; progress (%)
+    and eta (local time, ISO) are only there while a scrub runs."""
+    out = {"status": None, "progress": None, "eta": None}
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("Status:"):
+            out["status"] = line.split(":", 1)[1].strip().lower() or None
+        elif line.startswith("Bytes scrubbed:"):
+            m = re.search(r"\(([\d.]+)%\)", line)
+            if m:
+                out["progress"] = float(m.group(1))
+        elif line.startswith("ETA:"):
+            raw = line.split(":", 1)[1].strip()
+            try:
+                out["eta"] = datetime.strptime(raw, "%a %b %d %H:%M:%S %Y").astimezone() \
+                    .isoformat(timespec="seconds")
+            except ValueError:
+                pass
+    if out["status"] != "running":
+        out["progress"] = out["eta"] = None
+    return out
+
+
 def parse_lsblk_disks(text):
     disks = []
     for line in text.splitlines():
@@ -522,12 +547,22 @@ def collect_btrfs(name, path, with_scrub):
     comps = {key: sensor(key, "Btrfs %s errors" % name, state_class="measurement",
                          icon="mdi:alert-circle-outline")}
     if with_scrub:
-        when, scrub_errors = parse_btrfs_scrub(run_cmd(["btrfs", "scrub", "status", path]))
+        text = run_cmd(["btrfs", "scrub", "status", path])
+        when, scrub_errors = parse_btrfs_scrub(text)
+        progress = parse_btrfs_scrub_progress(text)
         state["btrfs_%s_last_scrub" % name] = when
+        state["btrfs_%s_scrub_status" % name] = progress["status"]
+        state["btrfs_%s_scrub_attr" % name] = {"progress": progress["progress"],
+                                               "eta": progress["eta"]}
         state["btrfs_%s_scrub_errors" % name] = scrub_errors
         comps["btrfs_%s_last_scrub" % name] = sensor(
             "btrfs_%s_last_scrub" % name, "Btrfs %s last scrub" % name,
             device_class="timestamp")
+        # "running" while a scrub runs (it loads the disks), with progress and eta as attributes
+        comps["btrfs_%s_scrub_status" % name] = sensor(
+            "btrfs_%s_scrub_status" % name, "Btrfs %s scrub status" % name, icon="mdi:broom",
+            json_attributes_topic=STATE_TOPIC,
+            json_attributes_template="{{ value_json['btrfs_%s_scrub_attr'] | tojson }}" % name)
         comps["btrfs_%s_scrub_errors" % name] = sensor(
             "btrfs_%s_scrub_errors" % name, "Btrfs %s scrub errors" % name,
             state_class="measurement")
