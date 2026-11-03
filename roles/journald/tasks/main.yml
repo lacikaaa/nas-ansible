@@ -1,0 +1,23 @@
+- name: "create journald drop-in directory"
+  file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: 0755
+
+- name: "copy journald retention config to host"
+  template:
+    src: retention.conf.j2
+    dest: /etc/systemd/journald.conf.d/retention.conf
+    owner: root
+    group: root
+    mode: 0644
+  register: journald_retention
+
+# journald applies the limits on restart and removes the archived files that exceed them
+- name: "Restart journald"
+  systemd:
+    name: systemd-journald
+    state: restarted
+  when: journald_retention.changed

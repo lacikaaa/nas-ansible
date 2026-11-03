@@ -1,0 +1,5 @@
+# archived journal files that start before this are removed. journald starts a new file at least monthly
+# (MaxFileSec), so 13 months keeps at least the last 12 months in full.
+journald_max_retention: 13month
+# safety cap on /var/log/journal; 12 months take about 1G at the current log rate
+journald_system_max_use: 2G

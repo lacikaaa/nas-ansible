@@ -77,6 +77,18 @@ Before a change is loaded, a `nasfw-revert` timer is armed. If ansible cannot op
 timer runs `systemctl disable --now nasfw.service` after 5 minutes, which leaves the NAS without a firewall until the
 rules are fixed.
 
+# Journal retention (journald)
+The `journald` role writes `/etc/systemd/journald.conf.d/retention.conf`: archived journal files that start more than
+`journald_max_retention` (13 months) ago are removed, which keeps at least the last 12 months, and `/var/log/journal` is
+capped at `journald_system_max_use` (2G) in case something starts logging much more. Without it journald keeps logs
+until it reaches its default 4G cap. journald is restarted when the file changes, and it deletes the files that exceed the new
+limits at that point.
+
+Run role with:
+```
+.venv/bin/ansible-playbook -i inventory/inventory.yml journald.yml
+```
+
 # CPU history (sysstat)
 The `sysstat` role installs sysstat. `sysstat-collect.timer` samples system-wide CPU, load, memory, disk and network every
 10 minutes into `/var/log/sa`, kept for `sysstat_history_days` (28). Read it with:
