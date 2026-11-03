@@ -7,3 +7,8 @@ Type=oneshot
 ExecStart=/usr/local/sbin/nas-ha-agent
 Nice=10
 TimeoutStartSec=120
+# A run every minute would log Starting/Deactivated/Finished (info) each time, ~4300 lines a day.
+# LogLevelMax also filters what systemd logs about the unit, so only notice and above are kept
+# (exit status, "Failed with result", timeouts). The agent's own stderr is raised to warning to pass.
+LogLevelMax=notice
+SyslogLevel=warning

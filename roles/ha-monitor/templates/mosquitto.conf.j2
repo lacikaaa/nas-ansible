@@ -5,3 +5,5 @@ acl_file /mosquitto/config/acl
 persistence true
 persistence_location /mosquitto/data/
 log_dest stdout
+# The agent connects once a minute, which would log 3 lines a run; errors and warnings are still logged.
+connection_messages false
