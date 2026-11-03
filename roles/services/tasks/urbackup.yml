@@ -1,0 +1,13 @@
+- name: "limit urbackup discovery broadcasts to the LAN interface"
+  lineinfile:
+    path: /etc/sysconfig/urbackup-server
+    regexp: '^BROADCAST_INTERFACES='
+    line: 'BROADCAST_INTERFACES="{{ urbackup_broadcast_interfaces }}"'
+  register: urbackup_conf
+
+# interrupts a running backup; the client retries it later
+- name: "restart urbackup-server"
+  systemd:
+    name: urbackup-server
+    state: restarted
+  when: urbackup_conf.changed

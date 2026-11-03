@@ -9,3 +9,4 @@
 - import_tasks: apcupsd.yml
 - import_tasks: transmission.yml
 - import_tasks: streamline.yml
+- import_tasks: urbackup.yml

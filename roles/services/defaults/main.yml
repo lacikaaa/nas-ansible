@@ -65,3 +65,8 @@ transmission: {
   "watch_dir_enabled": "true",
   "umask": 7
 }
+
+# urbackup client discovery broadcasts only on these interfaces (comma separated). Unset, urbackupsrv binds a socket on
+# every docker bridge and veth and keeps it after the container is recreated, then logs "Sending broadcast failed!"
+# every scan. Internet-mode clients (e.g. over the VPN) connect to the server and don't use discovery.
+urbackup_broadcast_interfaces: eth0
